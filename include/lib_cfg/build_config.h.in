@@ -1,0 +1,22 @@
+// Generated from build_config.h.in by Cmake
+
+#ifndef BUILD_CONFIG_H
+#define BUILD_CONFIG_H
+
+#define APP_VERSION       "@PROJECT_VERSION@"
+#define APP_BUILD_IMAGE   "@CMAKE_PROJECT_NAME@.elf"
+
+
+// Platform settings derived from CMake BUILD_PLATFORM variable
+#cmakedefine PLATFORM_HOSTED
+#cmakedefine PLATFORM_STM32
+
+// Build option settings
+#cmakedefine USE_TINYUSB
+
+
+#if defined USE_TINYUSB
+#  define USE_USB
+#endif
+
+#endif // BUILD_CONFIG_H
