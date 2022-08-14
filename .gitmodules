@@ -1,3 +1,6 @@
+[submodule "libraries/cstone"]
+	path = libraries/cstone
+	url = ../cstone
 [submodule "libraries/FreeRTOS-Kernel"]
 	path = libraries/FreeRTOS-Kernel
 	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git
@@ -7,6 +10,3 @@
 [submodule "libraries/heatshrink"]
 	path = libraries/heatshrink
 	url = https://github.com/atomicobject/heatshrink.git
-[submodule "libraries/tinyusb"]
-	path = libraries/tinyusb
-	url = https://github.com/hathach/tinyusb.git
