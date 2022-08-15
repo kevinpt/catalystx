@@ -4,7 +4,8 @@ cmake_minimum_required(VERSION 3.15)
 #################### Build config settings ####################
 
 set(BUILD_PLATFORM "stm32" CACHE STRING "Target platform")
-option(USE_TINYUSB    "Enable Tinyusb driver"   OFF)
+option(USE_TINYUSB      "Enable Tinyusb driver"           OFF)
+option(USE_NEWLIB_NANO  "Enable Newlib nano C library"    OFF)
 
 set(PLATFORM_STM32 OFF)
 set(PLATFORM_HOSTED OFF)
@@ -80,6 +81,7 @@ target_include_directories(freertos
     "${FREERTOS_ROOT}/include"
     ${FREERTOS_PORT_INCLUDE}
     "include/lib_cfg"
+    "${CMAKE_BINARY_DIR}/include/lib_cfg"
   PRIVATE
     "libraries/cstone/include"
 )
@@ -110,6 +112,7 @@ target_include_directories(heatshrink
 
 #################### tinyusb ####################
 
+if(USE_TINYUSB)
 
 file(GLOB_RECURSE TINYUSB_SOURCE
   "libraries/tinyusb/src/*.c"
@@ -141,6 +144,7 @@ target_compile_definitions(tinyusb
     ${DEVICE_MODEL_UC}xx
 )
 
+endif(USE_TINYUSB)
 
 #################### cstone ####################
 
@@ -174,7 +178,7 @@ set(APP_SOURCE_BUILD_EMBEDDED
 if(PLATFORM_STM32)
 add_stm32_executable(catalyst
   LINKER_SCRIPT
-    scripts/stm32/STM32F429ZITx_FLASH.ld
+    ${CMAKE_SOURCE_DIR}/scripts/stm32/STM32F429ZITx_FLASH.ld
   SOURCE
     ${APP_SOURCE_COMMON}
     ${APP_SOURCE_BUILD_EMBEDDED}
@@ -198,6 +202,7 @@ target_link_libraries(catalyst.elf
 target_include_directories(catalyst.elf
   PRIVATE
     "include"
+    "${CMAKE_BINARY_DIR}/include"
 )
 
 endif(PLATFORM_STM32)

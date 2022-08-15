@@ -1,11 +1,21 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdalign.h>
 
 #include "lib_cfg/build_config.h"
 #include "cstone/platform.h"
+#include "app_main.h"
 
-#include "util/mempool.h"
+#ifdef PLATFORM_EMBEDDED
+#  include "app_gpio.h"
+#  include "stm32f4xx_it.h"
+
+#  include "stm32f4xx_hal.h"
+#  include "stm32f4xx_ll_usart.h"
+#  include "stm32f4xx_ll_bus.h"
+#  include "stm32f4xx_ll_rcc.h"
+#endif
 
 #include "FreeRTOS.h"
 #include "semphr.h"
@@ -13,25 +23,60 @@
 #include "cstone/rtos.h"
 #include "cstone/timing.h"
 
+#include "cstone/debug.h"
 #include "cstone/led_blink.h"
 #include "cstone/umsg.h"
 #include "cstone/tasks_core.h"
 #include "cstone/prop_id.h"
 #include "cstone/prop_db.h"
 #include "cstone/prop_serialize.h"
-
-#ifdef PLATFORM_EMBEDDED
-#  include "app_gpio.h"
+#include "cstone/log_ram.h"
+#include "cstone/error_log.h"
+#include "cstone/log_db.h"
+#include "cstone/log_info.h"
+#include "cstone/log_compress.h"
+#ifndef LOG_TO_RAM
+#  ifdef PLATFORM_EMBEDDED
+#    include "cstone/log_stm32.h"
+#  else
+#    include "log_evfs.h"
+#  endif
 #endif
+#include "cstone/log_props.h"
+
+
+#include "util/mempool.h"
+
+
 
 
 
 PropDB      g_prop_db;
-//LogDB       g_log_db;
-//ErrorLog    g_error_log;
+LogDB       g_log_db;
+ErrorLog    g_error_log;
 mpPoolSet   g_pool_set;
 
 UMsgTarget  g_tgt_event_buttons;
+
+
+#if defined LOG_TO_RAM
+// Small in-memory database for testing
+static uint8_t s_log_db_data[LOG_NUM_SECTORS * LOG_SECTOR_SIZE];
+
+#else // Log to filesystem in hosted OS or flash memory
+#  ifndef PLATFORM_EMBEDDED
+  EvfsFile *s_log_db_file = NULL;
+#  else
+// Allocate flash storage in sectors 1, 2, and 3
+__attribute__(( section(".storage0") ))
+uint8_t s_log_db_data[LOG_NUM_SECTORS * LOG_SECTOR_SIZE];
+#  endif
+#endif
+
+
+#define ERROR_LOG_SECTOR_SIZE   (8 * sizeof(ErrorEntry))
+#define ERROR_LOG_NUM_SECTORS   4
+static uint8_t s_error_log_data[ERROR_LOG_NUM_SECTORS * ERROR_LOG_SECTOR_SIZE];
 
 
 /* LED blink pattern definitions
@@ -67,7 +112,7 @@ DEF_PIN(g_button1,        GPIO_PORT_A, 0,   GPIO_PIN_INPUT);
 
 static const PropDefaultDef s_prop_defaults[] = {
   P_UINT(P_DEBUG_SYS_LOCAL_VALUE,      0, 0),
-  P_UINT(P_APP_INFO_BUILD_VERSION,    42, P_PERSIST),
+  P_UINT(P_APP_INFO_BUILD_VERSION,    42, P_PERSIST), // FIXME: Use build constant
   P_END_DEFAULTS
 };
 
@@ -233,7 +278,7 @@ bool get_led(uint8_t led_id) {
 }
 
 
-void platform_init(void) {
+static void platform_init(void) {
 #ifdef PLATFORM_STM32
   HAL_Init();
 
@@ -250,6 +295,53 @@ void platform_init(void) {
 #endif
 
 
+  // Mount log DB
+  StorageConfig log_db_cfg = {
+    .sector_size  = LOG_SECTOR_SIZE,
+    .num_sectors  = LOG_NUM_SECTORS,
+
+#ifdef LOG_TO_RAM
+    .ctx          = s_log_db_data,
+    .erase_sector = log_ram_erase_sector,
+    .read_block   = log_ram_read_block,
+    .write_block  = log_ram_write_block
+#else
+#  ifdef PLATFORM_EMBEDDED // Log to flash
+    .ctx          = s_log_db_data,
+    .erase_sector = log_stm32_erase_sector,
+    .read_block   = log_stm32_read_block,
+    .write_block  = log_stm32_write_block
+#  else // Log to filesystem
+    .ctx          = s_log_db_file,
+    .erase_sector = log_evfs_erase_sector,
+    .read_block   = log_evfs_read_block,
+    .write_block  = log_evfs_write_block
+#  endif
+#endif
+  };
+
+  logdb_init(&g_log_db, &log_db_cfg);
+  logdb_mount(&g_log_db);
+
+#if defined PLATFORM_EMBEDDED
+  DPRINT("LogDB %dx%d  @ %p", LOG_NUM_SECTORS, LOG_SECTOR_SIZE, s_log_db_data);
+#endif
+
+
+  // Mount error log
+  StorageConfig error_log_cfg = {
+    .sector_size  = ERROR_LOG_SECTOR_SIZE,
+    .num_sectors  = ERROR_LOG_NUM_SECTORS,
+    .ctx          = s_error_log_data,
+
+    .erase_sector = log_ram_erase_sector,
+    .read_block   = log_ram_read_block,
+    .write_block  = log_ram_write_block
+  };
+
+  errlog_init(&g_error_log, &error_log_cfg);
+  errlog_format(&g_error_log);
+  errlog_mount(&g_error_log);
 }
 
 
@@ -268,7 +360,7 @@ static void event_button_handler(UMsgTarget *tgt, UMsg *msg) {
 
 
 
-void portable_init(void) {
+static void portable_init(void) {
   // Init LEDs
   blink_init(&s_blink_heartbeat, (uint8_t)LED_HEARTBEAT, g_PatternSlowBlink, BLINK_ALWAYS, NULL);
   blinkers_add(&s_blink_heartbeat);
@@ -283,11 +375,11 @@ void portable_init(void) {
 #define POOL_COUNT_SM 20 
 
   // Static pool data
-  static uint8_t s_mem_pool_large[POOL_SIZE_LG * POOL_COUNT_LG + MP_STATIC_PADDING(alignof(uintptr_t))]
-    alignas(mpPool);
+  alignas(mpPool)
+  static uint8_t s_mem_pool_large[POOL_SIZE_LG * POOL_COUNT_LG + MP_STATIC_PADDING(alignof(uintptr_t))];
 
-  static uint8_t s_mem_pool_med[POOL_SIZE_MD * POOL_COUNT_MD + MP_STATIC_PADDING(alignof(uintptr_t))]
-    alignas(mpPool);
+  alignas(mpPool)
+  static uint8_t s_mem_pool_med[POOL_SIZE_MD * POOL_COUNT_MD + MP_STATIC_PADDING(alignof(uintptr_t))];
 
 
   mp_init_pool_set(&g_pool_set);
@@ -311,6 +403,11 @@ void portable_init(void) {
 
   prop_db_init(&g_prop_db, 32, 0, &g_pool_set);
   prop_db_set_defaults(&g_prop_db, s_prop_defaults);
+
+  // Load properties from log DB
+  unsigned count = restore_props_from_log(&g_prop_db, &g_log_db);
+  printf("Retrieved %u properties from log\n", count);
+
 
 
   // Init message hub
@@ -341,7 +438,7 @@ int main(void) {
 #ifdef PLATFORM_EMBEDDED
 //  usb_tasks_init();
 #endif
-  app_tasks_init();
+//  app_tasks_init();
 
 #ifdef PLATFORM_EMBEDDED
   // Reduce SysTick priority before starting scheduler

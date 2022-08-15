@@ -78,7 +78,7 @@ target_include_directories(stm32
     "${CMSIS_ROOT}/Core/Include"
     "${HAL_ROOT}/Inc"
     "${BSP_ROOT}/${BOARD_NAME}"
-    "include/st_micro"
+    "include/stm32"
 )
 
 

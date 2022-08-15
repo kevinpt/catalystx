@@ -5,6 +5,12 @@
 #include <sys/unistd.h>
 #include <sys/stat.h>
 
+#include "build_config.h"
+
+#ifdef USE_NEWLIB_NANO
+#  include "stm32f4xx_hal.h"  // For CMSIS __BKPT()
+#endif
+
 #include "FreeRTOS.h"
 #include "semphr.h"
 #include "task.h"
@@ -29,6 +35,47 @@ int _lseek(int file, int ptr, int dir);
 int _fstat(int file, struct stat *st);
 int _isatty(int file);
 void *_sbrk(int incr);
+
+
+#ifdef USE_NEWLIB_NANO
+
+//#include <_ansi.h>
+//#include "swi.h"
+
+int _getpid(void);
+
+int _getpid(void) { // Called by _getpid_r
+  return -1;
+}
+
+//__attribute__((__noreturn__))
+//int _kill_shared(int, int status, int reason);
+
+//void _exit(int status);
+
+void _exit(int status) {  // Called by abort()
+//  _kill_shared (-1, status, ADP_Stopped_ApplicationExit);
+  __BKPT(0);
+  while(1) {};
+}
+
+
+int _kill (int pid, int sig);
+
+int _kill (int pid, int sig) {  // Called by _kill_r()
+//  errno = ENOSYS;
+//  return -1;
+
+//  if (sig == SIGABRT)
+//    _kill_shared (pid, sig, ADP_Stopped_RunTimeError);
+//  else
+//    _kill_shared (pid, sig, ADP_Stopped_ApplicationExit);
+  __BKPT(0);
+  return -1;
+}
+
+#endif
+
 
 
 int _read(int file, char *data, int len) {

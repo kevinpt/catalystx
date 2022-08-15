@@ -87,8 +87,8 @@ function(add_stm32_executable EXEC_NAME)
       -mfloat-abi=hard
       -mfpu=fpv4-sp-d16
       -ffreestanding
-      --specs=nosys.specs
-#      --specs=nano.specs
+      $<$<NOT:$<BOOL:${USE_NEWLIB_NANO}>>:--specs=nosys.specs>
+      $<$<BOOL:${USE_NEWLIB_NANO}>:--specs=nano.specs>
       "LINKER:--gc-sections"
 #      "LINKER:--print-gc-sections"
       "LINKER:-Map,${EXEC_NAME}.map"

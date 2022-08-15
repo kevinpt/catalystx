@@ -13,6 +13,7 @@
 
 // Build option settings
 #cmakedefine USE_TINYUSB
+#cmakedefine USE_NEWLIB_NANO
 
 
 #if defined USE_TINYUSB

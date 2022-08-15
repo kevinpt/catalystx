@@ -16,7 +16,7 @@
 #endif
 
 
-#include "disco.h"
+#include "app_main.h"
 #include "cstone/console.h"
 #include "cstone/io/uart_stm32.h"
 #include "cstone/faults.h"

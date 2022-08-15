@@ -2,6 +2,9 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "FreeRTOS.h"
+#include "semphr.h"
+
 #include "cstone/console.h"
 #include "app_cmds.h"
 
@@ -9,7 +12,7 @@
 #include "util/range_strings.h"
 
 
-int32_t cmd_demo(uint8_t argc, char *argv[], void *eval_ctx) {
+static int32_t cmd_demo(uint8_t argc, char *argv[], void *eval_ctx) {
   return 0;
 }
 

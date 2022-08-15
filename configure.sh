@@ -11,6 +11,7 @@ BUILD_DIR=.
 LIST_OPTS=0
 
 USE_TINYUSB=off
+USE_NEWLIB_NANO=off
 
 usage()
 {
@@ -46,7 +47,8 @@ done
 for opt in "$@"
 do
   case "$opt" in
-    USE_TINYUSB)  USE_TINYUSB=on  ;;
+    USE_TINYUSB)      USE_TINYUSB=on  ;;
+    USE_NEWLIB_NANO)  USE_NEWLIB_NANO=on  ;;
   esac
 done
 
@@ -102,5 +104,6 @@ else # Configure build
 
   cmake -S . -B $BUILD_DIR $TOOLCHAIN_OPT \
     -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_PLATFORM=$PLATFORM \
-    -DUSE_TINYUSB=$USE_TINYUSB
+    -DUSE_TINYUSB=$USE_TINYUSB -DUSE_NEWLIB_NANO=$USE_NEWLIB_NANO
 fi
+
