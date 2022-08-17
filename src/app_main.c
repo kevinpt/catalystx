@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdalign.h>
+#include <string.h>
 
 #include "lib_cfg/build_config.h"
 #include "cstone/platform.h"
@@ -24,6 +25,7 @@
 #include "cstone/timing.h"
 
 #include "cstone/debug.h"
+#include "cstone/faults.h"
 #include "cstone/led_blink.h"
 #include "cstone/umsg.h"
 #include "cstone/tasks_core.h"
@@ -43,6 +45,21 @@
 #  endif
 #endif
 #include "cstone/log_props.h"
+
+#ifdef USE_CONSOLE
+#  include "cstone/console.h"
+#  ifdef PLATFORM_EMBEDDED
+#    include "cstone/console_uart.h"
+//#    include "cstone/console_usb.h"
+#    include "cstone/cmds_stm32.h"
+#    include "cstone/io/uart_stm32.h"
+#  else
+#    include "cstone/console_stdio.h"
+//#    include "file_cmds.h"
+#  endif
+#  include "cstone/cmds_core.h"
+#  include "app_cmds.h"
+#endif
 
 
 #include "util/mempool.h"
@@ -75,7 +92,8 @@ uint8_t s_log_db_data[LOG_NUM_SECTORS * LOG_SECTOR_SIZE];
 
 
 #define ERROR_LOG_SECTOR_SIZE   (8 * sizeof(ErrorEntry))
-#define ERROR_LOG_NUM_SECTORS   4
+#define ERROR_LOG_NUM_SECTORS   2
+alignas(ErrorEntry)
 static uint8_t s_error_log_data[ERROR_LOG_NUM_SECTORS * ERROR_LOG_SECTOR_SIZE];
 
 
@@ -109,24 +127,46 @@ DEF_PIN(g_button1,        GPIO_PORT_A, 0,   GPIO_PIN_INPUT);
 #endif
 
 
-
 static const PropDefaultDef s_prop_defaults[] = {
-  P_UINT(P_DEBUG_SYS_LOCAL_VALUE,      0, 0),
-  P_UINT(P_APP_INFO_BUILD_VERSION,    42, P_PERSIST), // FIXME: Use build constant
+  P_UINT(P_DEBUG_SYS_LOCAL_VALUE,     0, 0),
+  P_UINT(P_APP_INFO_BUILD_VERSION,    APP_VERSION_INT, P_PERSIST),
   P_END_DEFAULTS
 };
 
 
 
+#ifdef USE_CONSOLE
+#  ifdef PLATFORM_EMBEDDED
+#    define CONSOLE_TX_QUEUE_SIZE   512
+#  else
+// TX queue not used on Linux build. Just keep a vestigial buffer for stdio console.
+#    define CONSOLE_TX_QUEUE_SIZE   16
+#  endif
+
+// Size RX queue to store full rate data between CONSOLE_TASK_MS polls.
+// Assume 230400 bps: 17ms * 230400/10 Bps = 392 bytes
+#  define CONSOLE_RX_QUEUE_SIZE     ((CONSOLE_UART_BAUD / 10) * (CONSOLE_TASK_MS+1) / 1000)
+
+#  define LINE_BUF_SIZE             64
+
+#  define CONSOLE_HISTORY_BUF_SIZE  128 // FIXME: Investigate bug with 254 and 255
+#endif
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////
+
 
 void fatal_error(void) {
 #ifdef PLATFORM_EMBEDDED
-//  Console *con = active_console();
-//  // Wait for Console TX queue to empty
-//  if(con) {
-//    if(!isr_queue_is_empty(con->tx_queue))
-//      delay_millis(200);
-//  }
+#  ifdef USE_CONSOLE
+  Console *con = active_console();
+  // Wait for Console TX queue to empty
+  if(con) {
+    if(!isr_queue_is_empty(con->tx_queue))
+      delay_millis(200);
+  }
+#  endif
 
   // Shutdown RTOS scheduler
   vTaskSuspendAll();
@@ -277,6 +317,58 @@ bool get_led(uint8_t led_id) {
   return false;
 }
 
+#ifdef USE_CONSOLE
+// Console setup
+uint8_t show_prompt(void *eval_ctx) {
+  fputs(A_YLW "APP> " A_NONE, stdout);
+  return 7; // Inform console driver of cursor position in line (0-based)
+}
+
+static ConsoleCommandSuite s_cmd_suite = {0};
+
+
+static void stdio_init(void) {
+#ifdef PLATFORM_EMBEDDED
+  putnl();  // Newlib-nano has odd behavior where setvbuf() doesn't work unless there is a pending line
+#endif
+  setvbuf(stdout, NULL, _IONBF, 0);
+
+#ifdef PLATFORM_HOSTED
+  configure_posix_terminal();
+#endif
+}
+
+
+static void report_sys_name(void) {
+  puts(A_BWHT u8"\n✨ Catalyst ✨" A_NONE);
+#ifdef PLATFORM_HOSTED
+  puts("** Hosted simulator **");
+#endif
+  putnl();
+}
+
+
+// FIXME: Move to app_stm32.c
+void uart_io_init(void) {
+  // Configure GPIO
+  GPIO_InitTypeDef uart_pin_cfg;
+
+  // TX
+  uart_pin_cfg.Pin        = GPIO_PIN_9;
+  uart_pin_cfg.Mode       = GPIO_MODE_AF_PP;
+  uart_pin_cfg.Alternate  = GPIO_AF7_USART1;
+  uart_pin_cfg.Speed      = GPIO_SPEED_FREQ_LOW;
+  uart_pin_cfg.Pull       = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &uart_pin_cfg);
+
+  // RX
+  uart_pin_cfg.Pin        = GPIO_PIN_10;
+  uart_pin_cfg.Mode       = GPIO_MODE_AF_OD;
+  HAL_GPIO_Init(GPIOA, &uart_pin_cfg);
+}
+
+#endif // USE_CONSOLE
+
 
 static void platform_init(void) {
 #ifdef PLATFORM_STM32
@@ -292,6 +384,54 @@ static void platform_init(void) {
 
   // Timer for run time stats and blocking delays
   perf_timer_init();
+#endif
+
+
+#ifdef USE_CONSOLE
+  command_suite_init(&s_cmd_suite);
+  command_suite_add(&s_cmd_suite, g_core_cmd_set);
+  command_suite_add(&s_cmd_suite, g_app_cmd_set);
+#  ifdef PLATFORM_EMBEDDED
+  command_suite_add(&s_cmd_suite, g_stm32_cmd_set);
+#  else
+//  command_suite_add(&s_cmd_suite, g_filesystem_cmd_set);
+#  endif
+
+  ConsoleConfigBasic con_cfg = {
+    .tx_queue_size = CONSOLE_TX_QUEUE_SIZE,
+    .rx_queue_size = CONSOLE_RX_QUEUE_SIZE,
+    .line_buf_size = LINE_BUF_SIZE,
+    .hist_buf_size = CONSOLE_HISTORY_BUF_SIZE,
+    .cmd_suite     = &s_cmd_suite
+  };
+
+#  ifdef PLATFORM_EMBEDDED
+  uart_io_init();
+  uart_init(CONSOLE_UART_ID, CONSOLE_UART_PORT, CONSOLE_UART_BAUD);
+
+  uart_console_init(CONSOLE_UART_ID, &con_cfg);
+
+#    ifdef USE_USB
+  usb_io_init();
+  usb_console_init(CONSOLE_USB_ID, &con_cfg);
+#    endif
+#  endif
+
+
+  stdio_init();
+  report_sys_name();
+#endif // USE_CONSOLE
+
+
+#ifdef PLATFORM_EMBEDDED
+  // Report summary of any recorded fault from the past
+  if(report_faults(&g_fault_record, /*verbose*/false))
+    g_prev_fault_record = g_fault_record;
+  memset((char *)&g_fault_record, 0, sizeof g_fault_record);  // Clear for next fault
+
+//  g_reset_source = get_reset_source();
+//  report_reset_source();
+//  LL_RCC_ClearResetFlags(); // Reset flags persist across resets unless we clear them
 #endif
 
 
@@ -366,6 +506,7 @@ static void portable_init(void) {
   blinkers_add(&s_blink_heartbeat);
 
   // Init memory pools
+// FIXME: Move to config file
 #define POOL_SIZE_LG  256
 #define POOL_SIZE_MD  64
 #define POOL_SIZE_SM  20
@@ -381,6 +522,9 @@ static void portable_init(void) {
   alignas(mpPool)
   static uint8_t s_mem_pool_med[POOL_SIZE_MD * POOL_COUNT_MD + MP_STATIC_PADDING(alignof(uintptr_t))];
 
+  alignas(mpPool)
+  static uint8_t s_mem_pool_small[POOL_SIZE_SM * POOL_COUNT_SM + MP_STATIC_PADDING(alignof(uintptr_t))];
+
 
   mp_init_pool_set(&g_pool_set);
   mpPool *pool;
@@ -392,7 +536,9 @@ static void portable_init(void) {
                               POOL_SIZE_MD, alignof(uintptr_t));
   mp_add_pool(&g_pool_set, pool);
 
-  pool = mp_create_pool(POOL_COUNT_SM, POOL_SIZE_SM, alignof(uintptr_t));
+//  pool = mp_create_pool(POOL_COUNT_SM, POOL_SIZE_SM, alignof(uintptr_t));
+  pool = mp_create_static_pool((uint8_t *)s_mem_pool_small, sizeof s_mem_pool_small,
+                              POOL_SIZE_SM, alignof(uintptr_t));
   mp_add_pool(&g_pool_set, pool);
 
 #ifdef USE_MP_COLLECT_STATS
@@ -401,13 +547,39 @@ static void portable_init(void) {
 #endif
 
 
+
+  // Load debug flags
+  debug_init();
+
+  // Setup system properties
+  prop_init();
+
+#if 0
+#ifdef USE_PROP_ID_FIELD_NAMES
+  // NOTE: This is sorted by qsort() so can't be const
+  static PropFieldDef s_prop_fields_app[] = {
+    PROP_LIST_DISCO(PROP_FIELD_DEF)
+  };
+
+  static PropNamespace s_app_prop_namespace = {
+    .next   = NULL, // C++ is such a POS
+    .prefix = 0,
+    .mask   = 0,
+    .prop_defs      = s_prop_fields_app,
+    .prop_defs_len  = COUNT_OF(s_prop_fields_app)
+  };
+
+  prop_add_namespace(&s_app_prop_namespace);
+#endif
+#endif
+
   prop_db_init(&g_prop_db, 32, 0, &g_pool_set);
   prop_db_set_defaults(&g_prop_db, s_prop_defaults);
+
 
   // Load properties from log DB
   unsigned count = restore_props_from_log(&g_prop_db, &g_log_db);
   printf("Retrieved %u properties from log\n", count);
-
 
 
   // Init message hub
@@ -418,7 +590,17 @@ static void portable_init(void) {
   umsg_tgt_add_filter(&g_tgt_event_buttons, P_EVENT_BUTTON_n_PRESS | P3_MSK | P4_MSK);
   umsg_hub_subscribe(&g_msg_hub, &g_tgt_event_buttons);
 
+  // Any event messages sent before now were discarded because there wasn't a hub
+  prop_db_set_msg_hub(&g_prop_db, (UMsgTarget *)&g_msg_hub);
+  g_prop_db.persist_updated = false; // Clear flag set by any init code
 
+
+#ifdef USE_CONSOLE
+  // Generate first prompt after all boot messages
+  Console *con = active_console();
+  if(con)
+    shell_show_boot_prompt(&con->shell);
+#endif
 }
 
 
@@ -427,11 +609,8 @@ int main(void) {
   portable_init();
 
   // Init settings from prop DB
-//  sys_props_init();
+//  app_apply_props();
 
-  // Any event messages sent before now were discarded because there wasn't a hub
-  prop_db_set_msg_hub(&g_prop_db, (UMsgTarget *)&g_msg_hub);
-  g_prop_db.persist_updated = false; // Clear flag set by any init code
 
   // Prepare FreeRTOS
   core_tasks_init();
@@ -451,3 +630,4 @@ int main(void) {
 
   while(1) {};
 }
+

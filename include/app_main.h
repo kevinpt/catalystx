@@ -1,6 +1,9 @@
 #ifndef APP_MAIN_H
 #define APP_MAIN_H
 
+// FIXME: Move to common config settings
+#define USE_CONSOLE
+
 
 #define P_DEBUG_SYS_LOCAL_VALUE     (P1_DEBUG | P2_SYS | P3_LOCAL | P4_VALUE)
 #define P_APP_INFO_BUILD_VERSION   (P1_APP | P2_INFO | P3_BUILD | P4_VERSION)

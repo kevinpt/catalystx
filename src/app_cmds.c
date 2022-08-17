@@ -13,6 +13,11 @@
 
 
 static int32_t cmd_demo(uint8_t argc, char *argv[], void *eval_ctx) {
+  printf("  argv[0]  %s\n", argv[0]);
+  for(int i = 1; i < argc; i++) {
+    printf("      [%d]  %s\n", i, argv[i]);
+  }
+
   return 0;
 }
 

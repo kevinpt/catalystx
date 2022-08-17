@@ -59,3 +59,4 @@ CMakeFiles
 *.cmake
 *.img
 include/build_config.h
+build

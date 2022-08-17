@@ -9,15 +9,15 @@ set(CMAKE_CXX_STANDARD          17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
-if(CMAKE_BUILD_TYPE MATCHES Debug)
-   set(CMAKE_C_FLAGS_DEBUG "-O0 -g -gdwarf-3 -gstrict-dwarf")
-   set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g -gdwarf-3 -gstrict-dwarf")
-endif()
+set(CMAKE_C_FLAGS_DEBUG             "-O0 -g -gdwarf-3 -gstrict-dwarf")
+set(CMAKE_CXX_FLAGS_DEBUG           "-O0 -g -gdwarf-3 -gstrict-dwarf")
 
-if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
-   set(CMAKE_C_FLAGS_RELWITHDEBINFO "-Os -DNDEBUG -g -gdwarf-3 -gstrict-dwarf")
-   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-Os -DNDEBUG -g -gdwarf-3 -gstrict-dwarf")
-endif()
+set(CMAKE_C_FLAGS_RELEASE           "-Os -DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE         "-Os -DNDEBUG")
+
+set(CMAKE_C_FLAGS_RELWITHDEBINFO    "-Os -DNDEBUG -g -gdwarf-3 -gstrict-dwarf")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO  "-Os -DNDEBUG -g -gdwarf-3 -gstrict-dwarf")
+
 
 # No change to default flags for Release and MinSizeRel
 
@@ -34,8 +34,10 @@ add_compile_options(
   -funsigned-char
   -funsigned-bitfields
   -fno-common
+  -fno-math-errno
   -fdata-sections
   -ffunction-sections
+  $<$<COMPILE_LANGUAGE:CXX>:-fno-use-cxa-atexit>
   -Wall
   -Wextra
   -Wno-unused-parameter
@@ -87,6 +89,7 @@ function(add_stm32_executable EXEC_NAME)
       -mfloat-abi=hard
       -mfpu=fpv4-sp-d16
       -ffreestanding
+      -fno-use-cxa-atexit
       $<$<NOT:$<BOOL:${USE_NEWLIB_NANO}>>:--specs=nosys.specs>
       $<$<BOOL:${USE_NEWLIB_NANO}>:--specs=nano.specs>
       "LINKER:--gc-sections"
@@ -97,6 +100,10 @@ function(add_stm32_executable EXEC_NAME)
       "LINKER:-T${ARG_LINKER_SCRIPT}"
   )
 
+# Generate detailed size report:
+#     arm-none-eabi-size -A app.elf
+# Generate list of largest symbols:
+#     arm-none-eabi-nm --print-size --size-sort --radix=d app.elf | tail -30
 
   set_target_properties(${EXEC_NAME}.elf
     PROPERTIES
