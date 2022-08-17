@@ -5,8 +5,10 @@
 ENTRY(Reset_Handler)
 
 /* Reserve space for C lib heap and main stack.
-   Stack only needs to be big enough for init code before FreeRTOS scheduler runs. */
-_reserved_heap_size  = 96K;
+   Stack only needs to be big enough for init code before FreeRTOS scheduler runs.
+   Note that this bloats the RAM usage reported by the linker.
+*/
+_reserved_heap_size  = 36K;
 _reserved_stack_size = 4K;
 
 /* Physical memory regions */
