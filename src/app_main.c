@@ -10,11 +10,10 @@
 
 #ifdef PLATFORM_EMBEDDED
 #  include "app_gpio.h"
+#  include "stm32/app_stm32.h"
 #  include "stm32f4xx_it.h"
 
 #  include "stm32f4xx_hal.h"
-#  include "stm32f4xx_ll_usart.h"
-#  include "stm32f4xx_ll_bus.h"
 #  include "stm32f4xx_ll_rcc.h"
 #endif
 
@@ -23,7 +22,7 @@
 #include "queue.h"
 #include "cstone/rtos.h"
 #include "cstone/timing.h"
-
+#include "cstone/target.h"
 #include "cstone/debug.h"
 #include "cstone/faults.h"
 #include "cstone/led_blink.h"
@@ -31,12 +30,10 @@
 #include "cstone/tasks_core.h"
 #include "cstone/prop_id.h"
 #include "cstone/prop_db.h"
-#include "cstone/prop_serialize.h"
 #include "cstone/log_ram.h"
 #include "cstone/error_log.h"
 #include "cstone/log_db.h"
 #include "cstone/log_info.h"
-#include "cstone/log_compress.h"
 #ifndef LOG_TO_RAM
 #  ifdef PLATFORM_EMBEDDED
 #    include "cstone/log_stm32.h"
@@ -61,10 +58,7 @@
 #  include "app_cmds.h"
 #endif
 
-
 #include "util/mempool.h"
-
-
 
 
 
@@ -72,7 +66,6 @@ PropDB      g_prop_db;
 LogDB       g_log_db;
 ErrorLog    g_error_log;
 mpPoolSet   g_pool_set;
-
 UMsgTarget  g_tgt_event_buttons;
 
 
@@ -97,26 +90,9 @@ alignas(ErrorEntry)
 static uint8_t s_error_log_data[ERROR_LOG_NUM_SECTORS * ERROR_LOG_SECTOR_SIZE];
 
 
-/* LED blink pattern definitions
-   Terminate with 0 to end the pattern or use the BLINK_PAT() macro.
-   Pattern begins with LED on then toggles for each following period
-   A single entry pattern will flash the LED once for a timeout when
-   configured for 1 rep. Patterns can have 15 segments max.
-                                           ON   OFF     ON  OFF       ON  OFF ...
-*/
-BlinkTime g_PatternFastBlink[]  = BLINK_PAT(100, 100);
-BlinkTime g_PatternSlowBlink[]  = BLINK_PAT(500, 500);
-BlinkTime g_PatternPulseOne[]   = BLINK_PAT(80,  2000-80);
-BlinkTime g_PatternPulseTwo[]   = BLINK_PAT(80,  200,    80, 2000-(80+200)*1-80);
-BlinkTime g_PatternPulseThree[] = BLINK_PAT(80,  200,    80, 200,      80, 2000-(80+200)*2-80);
-BlinkTime g_PatternPulseFour[]  = BLINK_PAT(80,  200,    80, 200,      80, 200,   80, 2000-(80+200)*3-80);
-BlinkTime g_PatternFlash200ms[] = BLINK_PAT(200);
-BlinkTime g_PatternDelay3s[]    = BLINK_PAT(1, 3000);
-
-static LedBlinker s_blink_heartbeat;
-
 #ifdef PLATFORM_EMBEDDED
-//ResetSource g_reset_source;
+static LedBlinker s_blink_heartbeat;
+ResetSource g_reset_source;
 
 // Initialize GPIO pins
 // Pins with alternate functions are initialized in usb_io_init() and uart_init()
@@ -132,26 +108,6 @@ static const PropDefaultDef s_prop_defaults[] = {
   P_UINT(P_APP_INFO_BUILD_VERSION,    APP_VERSION_INT, P_PERSIST),
   P_END_DEFAULTS
 };
-
-
-
-#ifdef USE_CONSOLE
-#  ifdef PLATFORM_EMBEDDED
-#    define CONSOLE_TX_QUEUE_SIZE   512
-#  else
-// TX queue not used on Linux build. Just keep a vestigial buffer for stdio console.
-#    define CONSOLE_TX_QUEUE_SIZE   16
-#  endif
-
-// Size RX queue to store full rate data between CONSOLE_TASK_MS polls.
-// Assume 230400 bps: 17ms * 230400/10 Bps = 392 bytes
-#  define CONSOLE_RX_QUEUE_SIZE     ((CONSOLE_UART_BAUD / 10) * (CONSOLE_TASK_MS+1) / 1000)
-
-#  define LINE_BUF_SIZE             64
-
-#  define CONSOLE_HISTORY_BUF_SIZE  128 // FIXME: Investigate bug with 254 and 255
-#endif
-
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -196,86 +152,6 @@ void assert_failed(uint8_t *file, uint32_t line) {
 }
 
 
-#ifdef PLATFORM_EMBEDDED
-static void system_clock_init(void) {
-  RCC_OscInitTypeDef osc_init;
-  RCC_ClkInitTypeDef clk_init;
-
-  __HAL_RCC_PWR_CLK_ENABLE();
-
-  // Enable voltage scaling at lower clock rates
-  // VDD 2.7V - 3.6V
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
-
-/*
-        Clock diagram in RM0090 Figure 16  p152
-                                                   : :        .--------.
-  HSE              .---------------------.         | |------->| AHB PS |---> HCLK  180MHz max
-  8MHz   .----.   |   .----.     .----.  | PLLCLK  | / SYSCLK '--------'
---|[]|-->| /M |---|-->| *N |--+->| /P |--|-------->|/            |   .---------.
-   X3    '----'   |   '----'  |  :----:  |                       +-->| APB1 PS |--> 45MHz max
-                  |           '->| /Q |--|---> PLL48CK (48MHz)   |   :---------:
-                  | PLL          '----'  |                       '-->| APB2 PS |--> 90MHz max
-                  '----------------------'                           '---------'
-*/
-
-
-  // Use PLL driven by HSE
-  osc_init.OscillatorType = RCC_OSCILLATORTYPE_HSE; // 8MHz Xtal
-  osc_init.HSEState       = RCC_HSE_ON;
-  osc_init.PLL.PLLState   = RCC_PLL_ON;
-  osc_init.PLL.PLLSource  = RCC_PLLSOURCE_HSE;
-
-#ifndef USE_USB // 180MHz Sysclk
-  osc_init.PLL.PLLM       = 8;   // Div factor (2 - 63)
-  osc_init.PLL.PLLN       = 360; // Mul factor (50 - 432)
-  osc_init.PLL.PLLP       = RCC_PLLP_DIV2; // Sysclk div factor (2,4,6,8)
-  osc_init.PLL.PLLQ       = 8;   // Div factor (2 - 15) for OTG FS, SDIO, and RNG (48MHz for USB)
-  // 8MHz * 360 / 8 / 2 --> 180MHz  Sysclk
-  // 8MHz * 360 / 8 / 8 --> 45MHz
-
-  // AHB = HCLK = Sysclk/1 = 180MHz  (180MHz max)
-  // APB1 = AHB/4 = 45MHz (45MHz max)
-  // APB2 = AHB/2 = 90MHz (90MHz max)
-  // SysTick = AHB = 180MHz
-
-#else // PLL48CK must be 48MHz so Sysclk limited to 168MHz
-  osc_init.PLL.PLLM       = 8;   // Div factor (2 - 63)
-  osc_init.PLL.PLLN       = 336; // Mul factor (50 - 432)
-  osc_init.PLL.PLLP       = RCC_PLLP_DIV2; // Sysclk div factor (2,4,6,8)
-  osc_init.PLL.PLLQ       = 7;   // Div factor (2 - 15) for OTG FS, SDIO, and RNG (48MHz for USB)
-  // 8MHz * 336 / 8 / 2 --> 168MHz  Sysclk
-  // 8MHz * 336 / 8 / 7 --> 48MHz
-
-  // AHB = HCLK = Sysclk/1 = 168MHz  (180MHz max)
-  // APB1 = AHB/4 = 42MHz (45MHz max)
-  // APB2 = AHB/2 = 84MHz (90MHz max)
-  // SysTick = AHB = 168MHz
-#endif
-
-  if(HAL_RCC_OscConfig(&osc_init) != HAL_OK)
-    fatal_error();
-
-  // Set internal voltage reg. to allow higher clock rates (required to achieve 180MHz)
-  // Stop and Standby modes no longer available
-  HAL_PWREx_EnableOverDrive();
- 
-  // Use PLL as Sysclk and set division ratios for derived clocks
-  clk_init.ClockType      = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK |
-                             RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2);
-  clk_init.SYSCLKSource   = RCC_SYSCLKSOURCE_PLLCLK;
-  clk_init.AHBCLKDivider  = RCC_SYSCLK_DIV1;  // HCLK == Sysclk
-  clk_init.APB1CLKDivider = RCC_HCLK_DIV4;
-  clk_init.APB2CLKDivider = RCC_HCLK_DIV2;
-
-  // NOTE: Latency selected from Table 11 in RM0090
-  if(HAL_RCC_ClockConfig(&clk_init, FLASH_LATENCY_5) != HAL_OK)
-    fatal_error();
-
-}
-#endif // PLATFORM_EMBEDDED
-
-
 // Abstract LED control
 void set_led(uint8_t led_id, const short state) {
 #ifdef PLATFORM_EMBEDDED
@@ -317,6 +193,7 @@ bool get_led(uint8_t led_id) {
   return false;
 }
 
+
 #ifdef USE_CONSOLE
 // Console setup
 uint8_t show_prompt(void *eval_ctx) {
@@ -347,26 +224,6 @@ static void report_sys_name(void) {
   putnl();
 }
 
-
-// FIXME: Move to app_stm32.c
-void uart_io_init(void) {
-  // Configure GPIO
-  GPIO_InitTypeDef uart_pin_cfg;
-
-  // TX
-  uart_pin_cfg.Pin        = GPIO_PIN_9;
-  uart_pin_cfg.Mode       = GPIO_MODE_AF_PP;
-  uart_pin_cfg.Alternate  = GPIO_AF7_USART1;
-  uart_pin_cfg.Speed      = GPIO_SPEED_FREQ_LOW;
-  uart_pin_cfg.Pull       = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &uart_pin_cfg);
-
-  // RX
-  uart_pin_cfg.Pin        = GPIO_PIN_10;
-  uart_pin_cfg.Mode       = GPIO_MODE_AF_OD;
-  HAL_GPIO_Init(GPIOA, &uart_pin_cfg);
-}
-
 #endif // USE_CONSOLE
 
 
@@ -388,6 +245,7 @@ static void platform_init(void) {
 
 
 #ifdef USE_CONSOLE
+  // Prepare command suite for all subsystems
   command_suite_init(&s_cmd_suite);
   command_suite_add(&s_cmd_suite, g_core_cmd_set);
   command_suite_add(&s_cmd_suite, g_app_cmd_set);
@@ -397,10 +255,11 @@ static void platform_init(void) {
 //  command_suite_add(&s_cmd_suite, g_filesystem_cmd_set);
 #  endif
 
+  // Using console with malloc'ed buffers
   ConsoleConfigBasic con_cfg = {
     .tx_queue_size = CONSOLE_TX_QUEUE_SIZE,
     .rx_queue_size = CONSOLE_RX_QUEUE_SIZE,
-    .line_buf_size = LINE_BUF_SIZE,
+    .line_buf_size = CONSOLE_LINE_BUF_SIZE,
     .hist_buf_size = CONSOLE_HISTORY_BUF_SIZE,
     .cmd_suite     = &s_cmd_suite
   };
@@ -417,7 +276,6 @@ static void platform_init(void) {
 #    endif
 #  endif
 
-
   stdio_init();
   report_sys_name();
 #endif // USE_CONSOLE
@@ -429,9 +287,9 @@ static void platform_init(void) {
     g_prev_fault_record = g_fault_record;
   memset((char *)&g_fault_record, 0, sizeof g_fault_record);  // Clear for next fault
 
-//  g_reset_source = get_reset_source();
-//  report_reset_source();
-//  LL_RCC_ClearResetFlags(); // Reset flags persist across resets unless we clear them
+  g_reset_source = get_reset_source();
+  report_reset_source();
+  LL_RCC_ClearResetFlags(); // Reset flags persist across resets unless we clear them
 #endif
 
 
@@ -501,19 +359,12 @@ static void event_button_handler(UMsgTarget *tgt, UMsg *msg) {
 
 
 static void portable_init(void) {
+#ifdef PLATFORM_EMBEDDED
   // Init LEDs
   blink_init(&s_blink_heartbeat, (uint8_t)LED_HEARTBEAT, g_PatternSlowBlink, BLINK_ALWAYS, NULL);
   blinkers_add(&s_blink_heartbeat);
+#endif
 
-  // Init memory pools
-// FIXME: Move to config file
-#define POOL_SIZE_LG  256
-#define POOL_SIZE_MD  64
-#define POOL_SIZE_SM  20
-
-#define POOL_COUNT_LG 4
-#define POOL_COUNT_MD 10
-#define POOL_COUNT_SM 20 
 
   // Static pool data
   alignas(mpPool)
@@ -558,13 +409,10 @@ static void portable_init(void) {
 #ifdef USE_PROP_ID_FIELD_NAMES
   // NOTE: This is sorted by qsort() so can't be const
   static PropFieldDef s_prop_fields_app[] = {
-    PROP_LIST_DISCO(PROP_FIELD_DEF)
+    PROP_LIST_APP(PROP_FIELD_DEF)
   };
 
   static PropNamespace s_app_prop_namespace = {
-    .next   = NULL, // C++ is such a POS
-    .prefix = 0,
-    .mask   = 0,
     .prop_defs      = s_prop_fields_app,
     .prop_defs_len  = COUNT_OF(s_prop_fields_app)
   };
@@ -590,7 +438,7 @@ static void portable_init(void) {
   umsg_tgt_add_filter(&g_tgt_event_buttons, P_EVENT_BUTTON_n_PRESS | P3_MSK | P4_MSK);
   umsg_hub_subscribe(&g_msg_hub, &g_tgt_event_buttons);
 
-  // Any event messages sent before now were discarded because there wasn't a hub
+  // Any DB event messages sent before now were discarded because there wasn't a hub
   prop_db_set_msg_hub(&g_prop_db, (UMsgTarget *)&g_msg_hub);
   g_prop_db.persist_updated = false; // Clear flag set by any init code
 

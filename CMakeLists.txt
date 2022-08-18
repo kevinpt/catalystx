@@ -169,6 +169,7 @@ set(APP_SOURCE_COMMON
 # STM32 platform specific code
 set(APP_SOURCE_BUILD_EMBEDDED
     src/stm32/stm32f4xx_it.c
+    src/stm32/app_stm32.c
     src/newlib_syscalls.c
     $<$<BOOL:${USE_TINYUSB}>:src/usb.c>
     $<$<BOOL:${USE_TINYUSB}>:src/tusb/usb_descriptors.c>
