@@ -2,7 +2,7 @@ import os
 import sys
 import tempfile
 import subprocess
-import pdb
+#import pdb
 
 import invoke.vendor.yaml3 as yaml
 from invoke import task, Collection
@@ -12,7 +12,7 @@ from invoke.exceptions import Exit
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 # Load user specific configuration
-ns = Collection.from_module(sys.modules[__name__])
+#ns = Collection.from_module(sys.modules[__name__])
 
 def init_user(ns):
   user_cfg_path = 'user.yaml'
@@ -20,10 +20,10 @@ def init_user(ns):
     with open(user_cfg_path) as fh:
       user_cfg = yaml.safe_load(fh)
       print(user_cfg)
-      pdb.set_trace()
+#      pdb.set_trace()
       ns.configure(user_cfg)
 
-init_user(ns)
+#init_user(ns)
 
 
 def get_fixture(c):
@@ -44,7 +44,7 @@ def report_config(c, board_name=None):
     if fixture and 'probe' in fixture:
       print(f'Probe:  \t{fixture.probe}')
 
-  print('##', c.user.fixture)
+#  print('##', c.user.fixture)
 
 
 @task
@@ -140,6 +140,10 @@ Combined debug and release options will select a CMake RelWithDebInfo build type
   # Add mandatory build options for the board
   if 'options' in board:
     build_opts = build_opts | set(board.options)
+
+  print('Options:')
+  for opt in sorted(list(build_opts)):
+    print(f'\t{opt}')
 
   cmake_defs = []
   for opt in proj_opts:

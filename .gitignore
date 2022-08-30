@@ -60,3 +60,4 @@ CMakeFiles
 *.img
 include/build_config.h
 build
+logdb.dat

@@ -13,3 +13,7 @@
 [submodule "libraries/STM32CubeF1"]
 	path = libraries/STM32CubeF1
 	url = https://github.com/STMicroelectronics/STM32CubeF1.git
+[submodule "libraries/evfs"]
+	path = libraries/evfs
+	url = https://github.com/kevinpt/evfs.git
+	shallow = true

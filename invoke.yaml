@@ -6,14 +6,15 @@ proj:   # Shared project settings
     - USE_TINYUSB
     - USE_NEWLIB_NANO
     - USE_MINIMAL_TASKS
+    - USE_FILESYSTEM
   targets:
     - catalyst
 
 user:   # User specific settings
-  fixture: xmaple_mini
+  fixture: maple_mini
 
   fixtures:
-    xmaple_mini:
+    maple_mini:
       probe: blackmagic
       console:
         device: /dev/ttyBmpTarg
@@ -37,6 +38,8 @@ boards: # Referenced by proj.board
     platform: hosted
     targets:  # Additional targets for this board
       - test
+    options:
+      - USE_FILESYSTEM
 
 cmake:
   toolchains: # Referenced by boards.[proj.board].toolchain
@@ -52,6 +55,8 @@ platforms:  # Referenced by boards.[proj.board].platform
       'libraries/STM32CubeF4':  https://github.com/STMicroelectronics/STM32CubeF4.git
 
   hosted:
+    submodules:
+      'libraries/evfs': https://github.com/kevinpt/evfs.git
 
 probes:   # Referenced by user.fixtures.[user.fixture].probe
   blackmagic: # Blackmagic probe. Programming via gdb

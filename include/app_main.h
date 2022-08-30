@@ -43,6 +43,20 @@
 #endif
 
 
+// **** Log DB Configuration ****
+//#define LOG_TO_RAM  // Force settings to RAM for debug
+
+#if defined LOG_TO_RAM || defined PLATFORM_HOSTED // Small in-memory filesystem for testing
+#  define LOG_NUM_SECTORS 3
+#  define LOG_SECTOR_SIZE 128
+
+#else // Log to flash storage
+#  if defined BOARD_STM32F429I_DISC1
+    // STORAGE0 in STM32 sectors 1-3
+#    define LOG_NUM_SECTORS 3
+#    define LOG_SECTOR_SIZE (16 * 1024)
+#  endif
+#endif
 
 
 // **** Peripheral resources ****

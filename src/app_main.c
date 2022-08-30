@@ -61,6 +61,16 @@
 #  endif
 #  include "cstone/cmds_core.h"
 #  include "app_cmds.h"
+#  ifdef USE_FILESYSTEM
+#    include "cmds_filesys.h"
+#  endif
+#endif
+
+#ifdef USE_FILESYSTEM
+#  include "evfs.h"
+#  include "evfs/romfs_fs.h"
+#  include "evfs/stdio_fs.h"
+#  include "evfs/shim/shim_trace.h"
 #endif
 
 #include "util/mempool.h"
@@ -79,9 +89,9 @@ UMsgTarget  g_tgt_event_buttons;
 static uint8_t s_log_db_data[LOG_NUM_SECTORS * LOG_SECTOR_SIZE];
 
 #else // Log to filesystem in hosted OS or flash memory
-#  ifndef PLATFORM_EMBEDDED
+#  if defined PLATFORM_HOSTED
   EvfsFile *s_log_db_file = NULL;
-#  else
+#  else // Embedded
 // Allocate flash storage in sectors 1, 2, and 3
 __attribute__(( section(".storage0") ))
 static uint8_t s_log_db_data[LOG_NUM_SECTORS * LOG_SECTOR_SIZE];
@@ -217,7 +227,7 @@ bool get_led(uint8_t led_id) {
 #ifdef USE_CONSOLE
 // Console setup
 uint8_t show_prompt(void *eval_ctx) {
-  fputs(A_YLW "APP> " A_NONE, stdout);
+  fputs(A_YLW u8"APP❱ " A_NONE, stdout);
   return 7; // Inform console driver of cursor position in line (0-based)
 }
 
@@ -246,6 +256,39 @@ static void report_sys_name(void) {
 
 #endif // USE_CONSOLE
 
+#ifdef USE_FILESYSTEM
+static void filesystem_init(void) {
+  // Configure filesystem
+  evfs_init();
+  evfs_register_stdio(/*default*/true);
+//  evfs_register_trace("t_stdio", "stdio", report, stderr, /*default_vfs*/ true);
+#if 0
+  EvfsFile *image;
+  evfs_open("disco_image.romfs", &image, EVFS_READ); // Open image on stdio
+  // Mount image and make it default for future VFS access
+  evfs_register_romfs("romfs", image, /*default*/ true);
+//  evfs_register_trace("t_romfs", "romfs", report, stderr, /*default_vfs*/ true);
+#endif
+
+  unsigned no_dots = 1;
+  evfs_vfs_ctrl(EVFS_CMD_SET_NO_DIR_DOTS, &no_dots);
+
+#  if ! defined LOG_TO_RAM
+#    define LOG_FILE_PATH  "logdb.dat"
+  int fs_status = evfs_open(LOG_FILE_PATH, &s_log_db_file, EVFS_RDWR | EVFS_OPEN_OR_NEW);
+  printf("EVFS opened log: %s\n", evfs_err_name(fs_status));
+  if(fs_status == EVFS_OK) {
+    if(evfs_file_size(s_log_db_file) == 0) { // New logdb file
+      // Grow file to required size
+      evfs_off_t last_byte = (LOG_NUM_SECTORS * LOG_SECTOR_SIZE) - 1;
+      evfs_file_seek(s_log_db_file, last_byte, EVFS_SEEK_TO);
+      uint8_t data = 0xAA;
+      evfs_file_write(s_log_db_file, &data, 1);
+    }
+  }
+#  endif
+}
+#endif // USE_FILESYSTEM
 
 static void platform_init(void) {
 #ifdef PLATFORM_STM32
@@ -272,7 +315,9 @@ static void platform_init(void) {
 #  ifdef PLATFORM_EMBEDDED
   command_suite_add(&s_cmd_suite, g_stm32_cmd_set);
 #  else // Hosted
-//  command_suite_add(&s_cmd_suite, g_filesystem_cmd_set);
+#    ifdef USE_FILESYSTEM
+  command_suite_add(&s_cmd_suite, g_filesystem_cmd_set);
+#    endif
 #  endif
 
   // Using console with malloc'ed buffers
@@ -315,6 +360,9 @@ static void platform_init(void) {
   LL_RCC_ClearResetFlags(); // Reset flags persist across resets unless we clear them
 #endif
 
+#ifdef USE_FILESYSTEM
+  filesystem_init();
+#endif
 
   // Mount log DB
   StorageConfig log_db_cfg = {
@@ -327,7 +375,7 @@ static void platform_init(void) {
     .read_block   = log_ram_read_block,
     .write_block  = log_ram_write_block
 #else
-#  ifdef PLATFORM_EMBEDDED // Log to flash
+#  ifndef USE_FILESYSTEM // Log to flash
     .ctx          = s_log_db_data,
     .erase_sector = log_stm32_erase_sector,
     .read_block   = log_stm32_read_block,

@@ -9,6 +9,7 @@ set(LINKER_SCRIPT  ""           CACHE STRING "Linker script for board")
 option(USE_TINYUSB        "Enable Tinyusb driver"           OFF)
 option(USE_NEWLIB_NANO    "Enable Newlib nano C library"    OFF)
 option(USE_MINIMAL_TASKS  "Reduce core task set to minimum" OFF)
+option(USE_FILESYSTEM     "Enable EVFS filesystem"          OFF)
 
 set(PLATFORM_HOSTED   OFF)
 set(PLATFORM_STM32    OFF)
@@ -115,6 +116,15 @@ target_include_directories(freertos
     "libraries/cstone/include"
 )
 
+#################### evfs ####################
+
+if(USE_FILESYSTEM)
+  if(PLATFORM_HOSTED)
+    set(USE_PTHREADS ON  BOOL "Enable Pthreads for EVFS")
+  endif()
+  add_subdirectory(libraries/evfs)
+endif()
+
 
 #################### heatshrink ####################
 
@@ -192,6 +202,8 @@ set(APP_SOURCE_COMMON
 #    src/app_tasks.c
     src/app_cmds.c
     src/build_info.c
+    $<$<BOOL:${USE_FILESYSTEM}>:src/cmds_filesys.c>
+    $<$<BOOL:${USE_FILESYSTEM}>:src/log_evfs.c>
 )
 
 
@@ -225,6 +237,7 @@ target_compile_definitions(catalyst.elf
 target_link_libraries(catalyst.elf
   PRIVATE
     $<$<BOOL:${USE_TINYUSB}>:tinyusb>
+    $<$<BOOL:${USE_FILESYSTEM}>:evfs>
     freertos
     cstone  # Contains weak symbols, keep at end
     stm32
@@ -250,6 +263,7 @@ add_pc_executable(catalyst
 
 target_link_libraries(catalyst
   PRIVATE
+    $<$<BOOL:${USE_FILESYSTEM}>:evfs>
     freertos
     pthread
     cstone

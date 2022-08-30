@@ -22,6 +22,7 @@
 #cmakedefine USE_TINYUSB
 #cmakedefine USE_NEWLIB_NANO
 #cmakedefine USE_MINIMAL_TASKS
+#cmakedefine USE_FILESYSTEM
 
 // Target board settings derived from CMake BUILD_BOARD variable
 #cmakedefine BOARD_MAPLE_MINI
