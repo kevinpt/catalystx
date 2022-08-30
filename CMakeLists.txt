@@ -3,17 +3,38 @@ cmake_minimum_required(VERSION 3.15)
 
 #################### Build config settings ####################
 
-set(BUILD_PLATFORM "stm32" CACHE STRING "Target platform")
-option(USE_TINYUSB      "Enable Tinyusb driver"           OFF)
-option(USE_NEWLIB_NANO  "Enable Newlib nano C library"    OFF)
+set(BUILD_PLATFORM "stm32f1"    CACHE STRING "Target platform")
+set(BUILD_BOARD    "none"       CACHE STRING "Target board")
+set(LINKER_SCRIPT  ""           CACHE STRING "Linker script for board")
+option(USE_TINYUSB        "Enable Tinyusb driver"           OFF)
+option(USE_NEWLIB_NANO    "Enable Newlib nano C library"    OFF)
+option(USE_MINIMAL_TASKS  "Reduce core task set to minimum" OFF)
 
-set(PLATFORM_STM32 OFF)
-set(PLATFORM_HOSTED OFF)
+set(PLATFORM_HOSTED   OFF)
+set(PLATFORM_STM32    OFF)
+set(PLATFORM_STM32F1  OFF)
+set(PLATFORM_STM32F4  OFF)
 
-if(BUILD_PLATFORM MATCHES "stm32")
-  set(PLATFORM_STM32 ON)
+set(BOARD_MAPLE_MINI        OFF)
+set(BOARD_STM32F429I_DISC1  OFF)
+set(BOARD_UNKNOWN           OFF)
+
+if(BUILD_PLATFORM MATCHES "stm32f1")
+  set(PLATFORM_STM32   ON)
+  set(PLATFORM_STM32F1 ON)
+elseif(BUILD_PLATFORM MATCHES "stm32f4")
+  set(PLATFORM_STM32   ON)
+  set(PLATFORM_STM32F4 ON)
 elseif(BUILD_PLATFORM MATCHES "hosted")
-  set(PLATFORM_HOSTED ON)
+  set(PLATFORM_HOSTED  ON)
+endif()
+
+if(BUILD_BOARD MATCHES "maple_mini")
+  set(BOARD_MAPLE_MINI ON)
+elseif(BUILD_BOARD MATCHES "stm32f429i_disc1")
+  set(BOARD_STM32F429I_DISC1 ON)
+else()
+  set(BOARD_UNKNOWN ON)
 endif()
 
 #message(STATUS "PLATFORM_STM32 ${PLATFORM_STM32}")
@@ -39,8 +60,12 @@ configure_file (
 
 
 #################### Target config ####################
-if(PLATFORM_STM32)
-  include(scripts/stm32_cfg.cmake)
+if(PLATFORM_STM32F1)
+  include(scripts/stm32f1_cfg.cmake)
+#  set(LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/stm32/STM32F103CBTx_FLASH.ld")
+elseif(PLATFORM_STM32F4)
+  include(scripts/stm32f4_cfg.cmake)
+#  set(LINKER_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/stm32/STM32F429ZITx_FLASH.ld")
 endif()
 
 
@@ -67,9 +92,13 @@ if(PLATFORM_HOSTED)
   )
   set(FREERTOS_PORT_INCLUDE "${FREERTOS_ROOT}/portable/ThirdParty/GCC/Posix")
 
+elseif(PLATFORM_STM32F1)
+  list(APPEND FREERTOS_SOURCE "${FREERTOS_ROOT}/portable/GCC/ARM_CM3/port.c")
+  set(FREERTOS_PORT_INCLUDE "${FREERTOS_ROOT}/portable/GCC/ARM_CM3")
+
 else()
   list(APPEND FREERTOS_SOURCE "${FREERTOS_ROOT}/portable/GCC/ARM_CM4F/port.c")
-  set(FREERTOS_PORT_INCLUDE "${FREERTOS_ROOT}/portable/GCC/ARM_CM4F") 
+  set(FREERTOS_PORT_INCLUDE "${FREERTOS_ROOT}/portable/GCC/ARM_CM4F")
 endif()
 
 set(FREERTOS_CFG_INCLUDE "${CMAKE_SOURCE_DIR}/include")
@@ -168,8 +197,10 @@ set(APP_SOURCE_COMMON
 
 # STM32 platform specific code
 set(APP_SOURCE_BUILD_EMBEDDED
-    src/stm32/stm32f4xx_it.c
-    src/stm32/app_stm32.c
+    $<$<BOOL:${PLATFORM_STM32F1}>:src/stm32/stm32f1xx_it.c>
+    $<$<BOOL:${PLATFORM_STM32F1}>:src/stm32/app_stm32f1.c>
+    $<$<BOOL:${PLATFORM_STM32F4}>:src/stm32/stm32f4xx_it.c>
+    $<$<BOOL:${PLATFORM_STM32F4}>:src/stm32/app_stm32f4.c>
     src/newlib_syscalls.c
     $<$<BOOL:${USE_TINYUSB}>:src/usb.c>
     $<$<BOOL:${USE_TINYUSB}>:src/tusb/usb_descriptors.c>
@@ -179,7 +210,7 @@ set(APP_SOURCE_BUILD_EMBEDDED
 if(PLATFORM_STM32)
 add_stm32_executable(catalyst
   LINKER_SCRIPT
-    ${CMAKE_SOURCE_DIR}/scripts/stm32/STM32F429ZITx_FLASH.ld
+    "${CMAKE_SOURCE_DIR}/${LINKER_SCRIPT}"
   SOURCE
     ${APP_SOURCE_COMMON}
     ${APP_SOURCE_BUILD_EMBEDDED}
@@ -228,6 +259,7 @@ target_link_libraries(catalyst
 target_include_directories(catalyst
   PRIVATE
     "include"
+    "${CMAKE_BINARY_DIR}/include"
 )
 
 endif(PLATFORM_HOSTED)

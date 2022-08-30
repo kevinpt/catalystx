@@ -15,10 +15,18 @@
 // Platform settings derived from CMake BUILD_PLATFORM variable
 #cmakedefine PLATFORM_HOSTED
 #cmakedefine PLATFORM_STM32
+#cmakedefine PLATFORM_STM32F1
+#cmakedefine PLATFORM_STM32F4
 
 // Build option settings
 #cmakedefine USE_TINYUSB
 #cmakedefine USE_NEWLIB_NANO
+#cmakedefine USE_MINIMAL_TASKS
+
+// Target board settings derived from CMake BUILD_BOARD variable
+#cmakedefine BOARD_MAPLE_MINI
+#cmakedefine BOARD_STM32F429I_DISC1
+#cmakedefine BOARD_UNKNOWN
 
 
 #if defined USE_TINYUSB

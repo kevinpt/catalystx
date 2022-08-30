@@ -8,13 +8,18 @@
 #include "cstone/platform.h"
 #include "app_main.h"
 
-#ifdef PLATFORM_EMBEDDED
+#if defined PLATFORM_EMBEDDED
 #  include "app_gpio.h"
 #  include "stm32/app_stm32.h"
-#  include "stm32f4xx_it.h"
+#  include "stm32f4xx_it.h" // FIXME: Rename to generic stm32_it
 
-#  include "stm32f4xx_hal.h"
-#  include "stm32f4xx_ll_rcc.h"
+#  if defined PLATFORM_STM32F1
+#    include "stm32f1xx_hal.h"
+#    include "stm32f1xx_ll_rcc.h"
+#  else
+#    include "stm32f4xx_hal.h"
+#    include "stm32f4xx_ll_rcc.h"
+#  endif
 #endif
 
 #include "FreeRTOS.h"
@@ -79,12 +84,12 @@ static uint8_t s_log_db_data[LOG_NUM_SECTORS * LOG_SECTOR_SIZE];
 #  else
 // Allocate flash storage in sectors 1, 2, and 3
 __attribute__(( section(".storage0") ))
-uint8_t s_log_db_data[LOG_NUM_SECTORS * LOG_SECTOR_SIZE];
+static uint8_t s_log_db_data[LOG_NUM_SECTORS * LOG_SECTOR_SIZE];
 #  endif
 #endif
 
 
-#define ERROR_LOG_SECTOR_SIZE   (8 * sizeof(ErrorEntry))
+#define ERROR_LOG_SECTOR_SIZE   (4 * sizeof(ErrorEntry))
 #define ERROR_LOG_NUM_SECTORS   2
 alignas(ErrorEntry)
 static uint8_t s_error_log_data[ERROR_LOG_NUM_SECTORS * ERROR_LOG_SECTOR_SIZE];
@@ -96,10 +101,19 @@ ResetSource g_reset_source;
 
 // Initialize GPIO pins
 // Pins with alternate functions are initialized in usb_io_init() and uart_init()
+#  if defined BOARD_STM32F429I_DISC1
+// STM32F429I_DISC1
 DEF_PIN(g_led_heartbeat,  GPIO_PORT_G, 14,  GPIO_PIN_OUTPUT_H);
 DEF_PIN(g_led_status,     GPIO_PORT_G, 13,  GPIO_PIN_OUTPUT_L);
 
 DEF_PIN(g_button1,        GPIO_PORT_A, 0,   GPIO_PIN_INPUT);
+
+#  elif defined BOARD_MAPLE_MINI
+// Maple Mini STM32F103CBT
+DEF_PIN(g_led_heartbeat,  GPIO_PORT_B, 1,  GPIO_PIN_OUTPUT_H);
+
+DEF_PIN(g_button1,        GPIO_PORT_B, 8,   GPIO_PIN_INPUT);
+#  endif
 #endif
 
 
@@ -144,12 +158,14 @@ void fatal_error(void) {
 }
 
 
+#ifdef PLATFORM_EMBEDDED
 // STM32 HAL helper. Also used by FreeRTOS configASSERT() macro.
 void assert_failed(uint8_t *file, uint32_t line) {
   printf(ERROR_PREFIX u8" \U0001F4A5 Assertion in '%s' on line %" PRIu32 A_NONE "\n", file, line);
 
   fatal_error();
 }
+#endif
 
 
 // Abstract LED control
@@ -169,7 +185,9 @@ void set_led(uint8_t led_id, const short state) {
       break;
 
     case LED_STATUS:
+#  if defined BOARD_STM32F429I_DISC1
       SET_LED_STATE(g_led_status, state);
+#  endif
       break;
 
   }
@@ -185,7 +203,9 @@ bool get_led(uint8_t led_id) {
       break;
 
     case LED_STATUS:
+#  if defined BOARD_STM32F429I_DISC1
       return gpio_value(&g_led_status);
+#  endif
       break;
 
   }
@@ -251,7 +271,7 @@ static void platform_init(void) {
   command_suite_add(&s_cmd_suite, g_app_cmd_set);
 #  ifdef PLATFORM_EMBEDDED
   command_suite_add(&s_cmd_suite, g_stm32_cmd_set);
-#  else
+#  else // Hosted
 //  command_suite_add(&s_cmd_suite, g_filesystem_cmd_set);
 #  endif
 
@@ -274,6 +294,9 @@ static void platform_init(void) {
   usb_io_init();
   usb_console_init(CONSOLE_USB_ID, &con_cfg);
 #    endif
+
+#  else // Hosted
+  stdio_console_init(&con_cfg);
 #  endif
 
   stdio_init();
@@ -467,10 +490,16 @@ int main(void) {
 #endif
 //  app_tasks_init();
 
+
 #ifdef PLATFORM_EMBEDDED
+  // After enabling g_enable_rtos_sys_tick there is a race condition if SysTick happens
+  // before scheduler is initialized. We synchronize using HAL_Delay() to buy time for
+  // the scheduler init.
+  HAL_Delay(1);
+  g_enable_rtos_sys_tick = true;
+
   // Reduce SysTick priority before starting scheduler
   HAL_InitTick(TICK_INT_PRIORITY);
-  g_enable_rtos_sys_tick = true;
 #endif
 
   // Run FreeRTOS

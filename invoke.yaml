@@ -1,0 +1,69 @@
+proj:   # Shared project settings
+  board:      maple_mini
+  build_dir:  build
+  source_dir: .
+  options:  # CMake configuration options
+    - USE_TINYUSB
+    - USE_NEWLIB_NANO
+    - USE_MINIMAL_TASKS
+  targets:
+    - catalyst
+
+user:   # User specific settings
+  fixture: xmaple_mini
+
+  fixtures:
+    xmaple_mini:
+      probe: blackmagic
+      console:
+        device: /dev/ttyBmpTarg
+        baud:   230400
+
+boards: # Referenced by proj.board
+  maple_mini:
+    platform:       stm32f1
+    linker_script:  scripts/stm32/STM32F103CBTx_FLASH.ld
+    toolchain:      arm
+    options:  # Mandatory options
+      - USE_NEWLIB_NANO
+      - USE_MINIMAL_TASKS
+
+  stm32f429i_disc1:
+    platform:       stm32f4
+    linker_script:  scripts/stm32/STM32F429ZITx_FLASH.ld
+    toolchain:      arm
+
+  hosted:
+    platform: hosted
+    targets:  # Additional targets for this board
+      - test
+
+cmake:
+  toolchains: # Referenced by boards.[proj.board].toolchain
+    arm: scripts/toolchain_arm_generic.cmake
+
+platforms:  # Referenced by boards.[proj.board].platform
+  stm32f1:
+    submodules:
+      'libraries/STM32CubeF1':  https://github.com/STMicroelectronics/STM32CubeF1.git
+
+  stm32f4:
+    submodules:
+      'libraries/STM32CubeF4':  https://github.com/STMicroelectronics/STM32CubeF4.git
+
+  hosted:
+
+probes:   # Referenced by user.fixtures.[user.fixture].probe
+  blackmagic: # Blackmagic probe. Programming via gdb
+    device: /dev/ttyBmpGdb
+    tpwr: true
+
+  stlink: # ST-Link probe. Programming via st-flash
+    address:  '0x8000000'
+
+  stlink_openocd: # ST-Link probe. Programming via OpenOCD
+    probe_cfg:  fixme
+    board_cfg:  /usr/local/share/openocd/scripts/board/stm32f429disc1.cfg 
+
+
+

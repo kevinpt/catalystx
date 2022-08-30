@@ -45,12 +45,16 @@
 #include "build_config.h"
 #include "cstone/platform.h"
 
-#if defined PLATFORM_EMBEDDED && !defined __SYSTEM_STM32F4XX_H
+#if defined PLATFORM_EMBEDDED && !defined __SYSTEM_STM32F4XX_H && !defined __SYSTEM_STM32F10X_H
 extern uint32_t SystemCoreClock;
 #endif
 
 // Section for heap defined in cstone rtos.c
-#define FREERTOS_HEAP_SECTION   ".ccmram"
+#ifdef PLATFORM_STM32F4
+#  define FREERTOS_HEAP_SECTION   ".ccmram"
+#else
+#  define FREERTOS_HEAP_SECTION   ".noinit"
+#endif
 
 #ifndef KB
 #  define KB  * 1024
@@ -64,11 +68,15 @@ extern uint32_t SystemCoreClock;
 #ifdef PLATFORM_EMBEDDED
 #  define configCPU_CLOCK_HZ              ( SystemCoreClock )
 #endif
-#  define PERF_CLOCK_HZ                 10000ul  // Generated timer clock (10kHz / 100us)
+#define PERF_CLOCK_HZ                   10000ul  // Generated timer clock (10kHz / 100us)
 #define configTICK_RATE_HZ              ( ( TickType_t ) 1000 )
 #define configMAX_PRIORITIES            ( 5 )
-#define configMINIMAL_STACK_SIZE        ( (unsigned short) 520 / sizeof(int) )
-#define configTOTAL_HEAP_SIZE           ( ( size_t ) ( 64 * 1024 ) )
+#define configMINIMAL_STACK_SIZE        ( (unsigned short) 400 / sizeof(StackType_t) )
+#if defined PLATFORM_STM32F4 || defined PLATFORM_HOSTED
+#  define configTOTAL_HEAP_SIZE           ( ( size_t ) ( 64 KB ) )
+#else
+#  define configTOTAL_HEAP_SIZE           ( ( size_t ) ( 7 KB ) )
+#endif
 #define configMAX_TASK_NAME_LEN         ( 10 )
 #define configUSE_TRACE_FACILITY        1
 #define configUSE_16_BIT_TICKS          0
@@ -76,7 +84,7 @@ extern uint32_t SystemCoreClock;
 #define configUSE_TASK_NOTIFICATIONS    1
 #define configTASK_NOTIFICATION_ARRAY_ENTRIES     1
 #define configUSE_MUTEXES               1
-#define configQUEUE_REGISTRY_SIZE       8
+#define configQUEUE_REGISTRY_SIZE       6
 #define configCHECK_FOR_STACK_OVERFLOW  2
 #define configUSE_RECURSIVE_MUTEXES     1
 #define configUSE_MALLOC_FAILED_HOOK    1
@@ -113,7 +121,7 @@ extern uint32_t perf_timer_count(void);
 #define configUSE_TIMERS                1
 #define configUSE_DAEMON_TASK_STARTUP_HOOK 1
 #define configTIMER_TASK_PRIORITY       ( 2 )
-#define configTIMER_QUEUE_LENGTH        10
+#define configTIMER_QUEUE_LENGTH        4
 #define configTIMER_TASK_STACK_DEPTH    ( configMINIMAL_STACK_SIZE * 1 )
 
 /* Set the following definitions to 1 to include the API function, or zero

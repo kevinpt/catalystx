@@ -18,18 +18,29 @@
 #  define CONSOLE_RX_QUEUE_SIZE     ((CONSOLE_UART_BAUD / 10) * (CONSOLE_TASK_MS+1) / 1000)
 
 #  define CONSOLE_LINE_BUF_SIZE     64
-#  define CONSOLE_HISTORY_BUF_SIZE  128 // FIXME: Investigate bug with 254 and 255
+#  define CONSOLE_HISTORY_BUF_SIZE  80 // FIXME: Investigate bug with 254 and 255
 #endif
 
 
 // Memory pool settings
-#define POOL_SIZE_LG  256
-#define POOL_SIZE_MD  64
-#define POOL_SIZE_SM  20
+#ifdef USE_MINIMAL_TASKS
+#  define POOL_SIZE_LG  128
+#  define POOL_SIZE_MD  64
+#  define POOL_SIZE_SM  20
 
-#define POOL_COUNT_LG 4
-#define POOL_COUNT_MD 10
-#define POOL_COUNT_SM 20
+#  define POOL_COUNT_LG 1
+#  define POOL_COUNT_MD 2
+#  define POOL_COUNT_SM 8
+
+#else
+#  define POOL_SIZE_LG  256
+#  define POOL_SIZE_MD  64
+#  define POOL_SIZE_SM  20
+
+#  define POOL_COUNT_LG 3
+#  define POOL_COUNT_MD 10
+#  define POOL_COUNT_SM 10
+#endif
 
 
 

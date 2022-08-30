@@ -5,7 +5,7 @@ set(DEVICE_MODEL  "${DEVICE_FAMILY}29")
 set(BOARD_NAME "STM32F429I-Discovery")
 
 string(TOUPPER ${DEVICE_FAMILY} DEVICE_FAMILY_UC)
-string(TOUPPER ${DEVICE_MODEL} DEVICE_MODEL_UC)
+set(DEVICE_MODEL_UC  "${DEVICE_FAMILY_UC}29xx")
 
 
 ####################           ####################
@@ -63,7 +63,7 @@ add_library(stm32 STATIC ${STM32_SOURCE})
 target_compile_definitions(stm32
   PUBLIC
     ${DEVICE_FAMILY_UC}
-    ${DEVICE_MODEL_UC}xx
+    ${DEVICE_MODEL_UC}
 #    USE_FULL_ASSERT
     USE_HAL_DRIVER
     USE_FULL_LL_DRIVER
@@ -84,50 +84,50 @@ target_include_directories(stm32
 
 #################### libstm32usb ####################
 
-file(GLOB USB_CORE_SOURCE
-  ${USB_ROOT}/Core/Src/*.c
-)
+#file(GLOB USB_CORE_SOURCE
+#  ${USB_ROOT}/Core/Src/*.c
+#)
 
-list(FILTER USB_CORE_SOURCE
-  EXCLUDE REGEX ".*template.c$"
-)
+#list(FILTER USB_CORE_SOURCE
+#  EXCLUDE REGEX ".*template.c$"
+#)
 
-file(GLOB USB_CDC_SOURCE
-  ${USB_ROOT}/Class/CDC/Src/*.c
-)
+#file(GLOB USB_CDC_SOURCE
+#  ${USB_ROOT}/Class/CDC/Src/*.c
+#)
 
-list(FILTER USB_CDC_SOURCE
-  EXCLUDE REGEX ".*template.c$"
-)
-
-
-set(USB_SOURCE
-  ${USB_CORE_SOURCE}
-  ${USB_CDC_SOURCE}
-)
+#list(FILTER USB_CDC_SOURCE
+#  EXCLUDE REGEX ".*template.c$"
+#)
 
 
-add_library(stm32usb STATIC ${USB_SOURCE})
+#set(USB_SOURCE
+#  ${USB_CORE_SOURCE}
+#  ${USB_CDC_SOURCE}
+#)
 
-target_compile_definitions(stm32usb
-  PUBLIC
-    ${DEVICE_FAMILY_UC}
-    ${DEVICE_MODEL_UC}xx
-#    USE_HAL_DRIVER
-#    USE_FULL_LL_DRIVER
-#    HSE_VALUE=8000000
-#    HSI_VALUE=16000000
-)
 
-target_include_directories(stm32usb
-  PUBLIC
-    ${USB_ROOT}/Core/Inc
-    ${USB_ROOT}/Class/CDC/Inc
-    ${USB_ROOT}/Class/HID/Inc
-    "${CMSIS_ROOT}/Include"
-    "${CMSIS_ROOT}/Device/ST/${DEVICE_FAMILY_UC}xx/Include"
-    "${CMSIS_ROOT}/Core/Include"
-    "${HAL_ROOT}/Inc"
-    "include/st_micro"
-)
+#add_library(stm32usb STATIC ${USB_SOURCE})
+
+#target_compile_definitions(stm32usb
+#  PUBLIC
+#    ${DEVICE_FAMILY_UC}
+#    ${DEVICE_MODEL_UC}xx
+##    USE_HAL_DRIVER
+##    USE_FULL_LL_DRIVER
+##    HSE_VALUE=8000000
+##    HSI_VALUE=16000000
+#)
+
+#target_include_directories(stm32usb
+#  PUBLIC
+#    ${USB_ROOT}/Core/Inc
+#    ${USB_ROOT}/Class/CDC/Inc
+#    ${USB_ROOT}/Class/HID/Inc
+#    "${CMSIS_ROOT}/Include"
+#    "${CMSIS_ROOT}/Device/ST/${DEVICE_FAMILY_UC}xx/Include"
+#    "${CMSIS_ROOT}/Core/Include"
+#    "${HAL_ROOT}/Inc"
+#    "include/st_micro"
+#)
 

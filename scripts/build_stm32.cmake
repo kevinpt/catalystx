@@ -24,11 +24,13 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO  "-Os -DNDEBUG -g -gdwarf-3 -gstrict-dwarf")
 
 add_compile_options(
   -Dnewlib
-  -mcpu=cortex-m4
+  $<$<BOOL:${PLATFORM_STM32F4}>:-mcpu=cortex-m4>
+  $<$<BOOL:${PLATFORM_STM32F1}>:-mcpu=cortex-m3>
   -mthumb
   -mlittle-endian
-  -mfloat-abi=hard
-  -mfpu=fpv4-sp-d16
+  $<$<BOOL:${PLATFORM_STM32F4}>:-mfloat-abi=hard>
+  $<$<BOOL:${PLATFORM_STM32F4}>:-mfpu=fpv4-sp-d16>
+  $<$<BOOL:${PLATFORM_STM32F1}>:-mfloat-abi=soft>
   -fno-exceptions
   $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
   -funsigned-char
@@ -83,11 +85,13 @@ function(add_stm32_executable EXEC_NAME)
 
   target_link_options(${EXEC_NAME}.elf
     PRIVATE
-      -mcpu=cortex-m4
+      $<$<BOOL:${PLATFORM_STM32F4}>:-mcpu=cortex-m4>
+      $<$<BOOL:${PLATFORM_STM32F1}>:-mcpu=cortex-m3>
       -mthumb
       -mlittle-endian
-      -mfloat-abi=hard
-      -mfpu=fpv4-sp-d16
+      $<$<BOOL:${PLATFORM_STM32F4}>:-mfloat-abi=hard>
+      $<$<BOOL:${PLATFORM_STM32F4}>:-mfpu=fpv4-sp-d16>
+      $<$<BOOL:${PLATFORM_STM32F1}>:-mfloat-abi=soft>
       -ffreestanding
       -fno-use-cxa-atexit
       $<$<NOT:$<BOOL:${USE_NEWLIB_NANO}>>:--specs=nosys.specs>
@@ -141,6 +145,7 @@ function(add_stm32_executable EXEC_NAME)
   )
 
   add_custom_target( upload_${EXEC_NAME}
+# FIXME: Make this configurable for different boards
     openocd -f /usr/local/share/openocd/scripts/board/stm32f429disc1.cfg -c "program ${EXEC_NAME}.elf verify reset exit"
     DEPENDS ${EXEC_NAME}.elf
   )

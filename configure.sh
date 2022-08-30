@@ -4,7 +4,7 @@
 # This takes care of selecting the build type and will purge the cache if the
 # toolchain is changed.
 
-PLATFORM=stm32
+PLATFORM=stm32f1
 DEBUG=0
 RELEASE=0
 BUILD_DIR=.
@@ -12,11 +12,12 @@ LIST_OPTS=0
 
 USE_TINYUSB=off
 USE_NEWLIB_NANO=off
+USE_MINIMAL_TASKS=off
 
 usage()
 {
   echo "Usage: configure [ -d | --debug ] [ -r | --release ]
-                 [ -p | --platform stm32|hosted ]
+                 [ -p | --platform stm32f1|stm32f4||hosted ]
                  [ -B BUILD_DIR ]
                  [ USE_TINYUSB ]"
   exit 2
@@ -47,8 +48,9 @@ done
 for opt in "$@"
 do
   case "$opt" in
-    USE_TINYUSB)      USE_TINYUSB=on  ;;
-    USE_NEWLIB_NANO)  USE_NEWLIB_NANO=on  ;;
+    USE_TINYUSB)      USE_TINYUSB=on        ;;
+    USE_NEWLIB_NANO)  USE_NEWLIB_NANO=on    ;;
+    USE_MINIMAL_TASKS) USE_MINIMAL_TASKS=on ;;
   esac
 done
 
@@ -69,7 +71,8 @@ else # Configure build
   echo "Platform:   $PLATFORM"
 
   case "$PLATFORM" in
-    stm32)  TOOLCHAIN=scripts/toolchain_arm_generic.cmake ;;
+    stm32f1)  TOOLCHAIN=scripts/toolchain_arm_generic.cmake ;;
+    stm32f4)  TOOLCHAIN=scripts/toolchain_arm_generic.cmake ;;
     hosted) TOOLCHAIN="" ;;
   esac
 
@@ -104,6 +107,6 @@ else # Configure build
 
   cmake -S . -B $BUILD_DIR $TOOLCHAIN_OPT \
     -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_PLATFORM=$PLATFORM \
-    -DUSE_TINYUSB=$USE_TINYUSB -DUSE_NEWLIB_NANO=$USE_NEWLIB_NANO
+    -DUSE_TINYUSB=$USE_TINYUSB -DUSE_NEWLIB_NANO=$USE_NEWLIB_NANO -DUSE_MINIMAL_TASKS=$USE_MINIMAL_TASKS
 fi
 

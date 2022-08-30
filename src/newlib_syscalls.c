@@ -7,8 +7,12 @@
 
 #include "build_config.h"
 
-#ifdef USE_NEWLIB_NANO
-#  include "stm32f4xx_hal.h"  // For CMSIS __BKPT()
+#if defined USE_NEWLIB_NANO
+#  if defined PLATFORM_STM32F1
+#    include "stm32f1xx_hal.h"  // For CMSIS __BKPT()
+#  else
+#    include "stm32f4xx_hal.h"  // For CMSIS __BKPT()
+#  endif
 #endif
 
 #include "FreeRTOS.h"

@@ -10,3 +10,6 @@
 [submodule "libraries/heatshrink"]
 	path = libraries/heatshrink
 	url = https://github.com/atomicobject/heatshrink.git
+[submodule "libraries/STM32CubeF1"]
+	path = libraries/STM32CubeF1
+	url = https://github.com/STMicroelectronics/STM32CubeF1.git
