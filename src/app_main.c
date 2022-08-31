@@ -143,7 +143,7 @@ void fatal_error(void) {
   Console *con = active_console();
   // Wait for Console TX queue to empty
   if(con) {
-    if(!isr_queue_is_empty(con->tx_queue))
+    if(!isr_queue_is_empty(con->stream.tx_queue))
       delay_millis(200);
   }
 #  endif

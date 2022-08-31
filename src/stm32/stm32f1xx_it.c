@@ -153,7 +153,7 @@ static inline void process_uart_console_irq(int id) {
 
     // TX
     if(LL_USART_IsActiveFlag_TXE(uart_dev) && LL_USART_IsEnabledIT_TXE(uart_dev)) {
-      if(con && isr_queue_pop_one(con->tx_queue, &ch) > 0) {
+      if(con && isr_queue_pop_one(con->stream.tx_queue, &ch) > 0) {
         LL_USART_TransmitData8(uart_dev, ch);
       } else { // Last byte shifting out now; No more TXE events
         LL_USART_DisableIT_TXE(uart_dev);
@@ -178,7 +178,7 @@ static inline void process_uart_console_irq(int id) {
     static BaseType_t high_prio_task;
     if(tx_empty && xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
       if(con) {
-        xSemaphoreGiveFromISR(con->tx_empty, &high_prio_task);
+        xSemaphoreGiveFromISR(con->stream.tx_empty, &high_prio_task);
         portYIELD_FROM_ISR(high_prio_task);
       }
     }

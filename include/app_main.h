@@ -44,7 +44,7 @@
 
 
 // **** Log DB Configuration ****
-//#define LOG_TO_RAM  // Force settings to RAM for debug
+#define LOG_TO_RAM  // Force settings to RAM for debug
 
 #if defined LOG_TO_RAM || defined PLATFORM_HOSTED // Small in-memory filesystem for testing
 #  define LOG_NUM_SECTORS 3
