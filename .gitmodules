@@ -17,3 +17,6 @@
 	path = libraries/evfs
 	url = https://github.com/kevinpt/evfs.git
 	shallow = true
+[submodule "libraries/tinyusb"]
+	path = libraries/tinyusb
+	url = https://github.com/hathach/tinyusb.git
