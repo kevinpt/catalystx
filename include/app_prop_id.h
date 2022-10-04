@@ -1,0 +1,28 @@
+#ifndef APP_PROP_ID_H
+#define APP_PROP_ID_H
+
+#define PROP_LIST_APP(M) \
+\
+M(P2, AUDIO,     60) \
+\
+M(P3, INST0,  60) \
+\
+M(P4, FREQ,     60) \
+M(P4, WAVE,     61) \
+M(P4, CURVE,    62)
+
+
+enum PropElementsApp {
+  PROP_LIST_APP(PROP_ENUM_ITEM)
+};
+
+
+#define P_RSRC_CON_LOCAL_TASK   (P1_RSRC | P2_CON | P3_LOCAL | P4_TASK)
+
+#define P_APP_AUDIO_INFO_VALUE    (P1_APP | P2_AUDIO | P3_INFO | P4_VALUE)
+#define P_APP_AUDIO_INST0_FREQ    (P1_APP | P2_AUDIO | P3_INST0 | P4_FREQ)
+#define P_APP_AUDIO_INST0_WAVE    (P1_APP | P2_AUDIO | P3_INST0 | P4_WAVE)
+#define P_APP_AUDIO_INST0_CURVE   (P1_APP | P2_AUDIO | P3_INST0 | P4_CURVE)
+
+
+#endif // APP_PROP_ID_H

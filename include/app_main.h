@@ -44,7 +44,7 @@
 
 
 // **** Log DB Configuration ****
-#define LOG_TO_RAM  // Force settings to RAM for debug
+//#define LOG_TO_RAM  // Force settings to RAM for debug
 
 #if defined LOG_TO_RAM || defined PLATFORM_HOSTED // Small in-memory filesystem for testing
 #  define LOG_NUM_SECTORS 3
@@ -72,6 +72,12 @@
 #define CONSOLE_UART_BAUD       230400
 
 
+#define CONSOLE_USB_ID          0
+
+
+
+#define AUDIO_SAMPLE_RATE       16000
+#define USE_HAL_I2S     // FIXME: Convert I2S/DMA to LL API
 
 // ******************** App properties ********************
 
@@ -93,6 +99,10 @@ typedef enum {
 // Argument to set_led() to toggle state
 #define LED_TOGGLE -1
 
+
+#ifndef COUNT_OF
+#  define COUNT_OF(a) (sizeof(a) / sizeof(*(a)))
+#endif
 
 
 #ifdef __cplusplus

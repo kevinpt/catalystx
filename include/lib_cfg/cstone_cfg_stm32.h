@@ -9,4 +9,10 @@
 #endif
 // See FreeRTOSConfig.h for def of PERF_CLOCK_HZ
 
+
+// Timer for soft RTC
+#define RTC_TIMER                   TIM3
+#define RTC_TIMER_CLK_ENABLE        __HAL_RCC_TIM3_CLK_ENABLE
+#define RTC_TIMER_IRQ               TIM3_IRQn
+
 #endif // CSTONE_CFG_STM32_H

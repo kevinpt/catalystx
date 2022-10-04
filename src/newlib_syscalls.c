@@ -4,6 +4,7 @@
 #include <malloc.h>
 #include <sys/unistd.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 
 #include "build_config.h"
 
@@ -20,6 +21,7 @@
 #include "task.h"
 
 #include "cstone/console.h"
+#include "cstone/rtc_device.h"
 
 #ifdef DEBUG_CTRL_PRINT
 #  include <ctype.h>
@@ -39,6 +41,7 @@ int _lseek(int file, int ptr, int dir);
 int _fstat(int file, struct stat *st);
 int _isatty(int file);
 void *_sbrk(int incr);
+int _gettimeofday(struct timeval *tp, void *tzvp);
 
 
 #ifdef USE_NEWLIB_NANO
@@ -206,4 +209,20 @@ void *_sbrk(int incr) {
   return (void *)next_block;
 }
 
+
+int _gettimeofday(struct timeval *tp, void *tzvp) {
+  struct timezone *zone = tzvp;
+
+  if(tp) {
+    time_t now = rtc_get_time(rtc_sys_device());
+    tp->tv_sec = now; //millis() / 1000;
+    tp->tv_usec = 0;
+  }
+
+  if(zone) {
+    zone->tz_minuteswest = 0;
+    zone->tz_dsttime = 0;
+  }
+  return 0;
+}
 

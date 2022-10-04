@@ -23,6 +23,7 @@
 #cmakedefine USE_NEWLIB_NANO
 #cmakedefine USE_MINIMAL_TASKS
 #cmakedefine USE_FILESYSTEM
+#cmakedefine01 USE_AUDIO
 
 // Target board settings derived from CMake BUILD_BOARD variable
 #cmakedefine BOARD_MAPLE_MINI

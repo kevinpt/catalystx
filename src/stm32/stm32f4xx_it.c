@@ -1,8 +1,11 @@
 #include <stdbool.h>
+#include <time.h>
 
 #include "lib_cfg/build_config.h"
+#include "lib_cfg/cstone_cfg_stm32.h"
 
 #include "stm32f4xx_hal.h"
+#include "stm32f4xx_ll_tim.h"
 #include "stm32f4xx_ll_usart.h"
 #include "stm32f429i_discovery.h"
 
@@ -18,8 +21,10 @@
 
 #include "app_main.h"
 #include "cstone/console.h"
-#include "cstone/io/uart_stm32.h"
+#include "cstone/io/uart.h"
 #include "cstone/faults.h"
+#include "cstone/rtc_device.h"
+#include "cstone/rtc_soft.h"
 
 #include "stm32/stm32f4xx_it.h"
 
@@ -191,8 +196,39 @@ void USART_IRQ_HANDLER(CONSOLE_UART_ID) {
 }
 
 #ifdef USE_TINYUSB
+void OTG_HS_IRQHandler(void);
 void OTG_HS_IRQHandler(void) {
   tud_int_handler(BOARD_DEVICE_RHPORT_NUM);
 }
 #endif
+
+#if USE_AUDIO
+//HAL_I2S_IRQHandler()
+//HAL_I2SEx_FullDuplex_IRQHandler()
+
+/*extern I2S_HandleTypeDef g_i2s;
+void SPI2_IRQHandler(void);
+void SPI2_IRQHandler(void) {
+  HAL_I2S_IRQHandler(&g_i2s);
+}*/
+
+extern DMA_HandleTypeDef g_dma;
+
+void DMA1_Stream4_IRQHandler(void);
+void DMA1_Stream4_IRQHandler(void) {
+  HAL_DMA_IRQHandler(&g_dma);
+}
+#endif
+
+
+extern RTCDevice g_rtc_soft_device;
+void TIM3_IRQHandler(void);
+void TIM3_IRQHandler(void) {
+  if(LL_TIM_IsActiveFlag_UPDATE(RTC_TIMER) && LL_TIM_IsEnabledIT_UPDATE(RTC_TIMER)) {
+    LL_TIM_ClearFlag_UPDATE(RTC_TIMER);
+    rtc_soft_update(&g_rtc_soft_device, 1);
+//    set_led(LED_STATUS, LED_TOGGLE);
+  }
+}
+
 
