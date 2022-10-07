@@ -24,7 +24,9 @@
 #    include "stm32f4xx_hal.h"
 #    include "stm32f4xx_ll_rcc.h"
 #    include "stm32f4xx_ll_gpio.h"
-#    include "stm32f4xx_ll_rng.h"
+#    ifdef BOARD_STM32F429I_DISC1
+#      include "stm32f4xx_ll_rng.h"
+#    endif
 #    include "stm32f4xx_ll_tim.h"
 #  endif
 #endif
@@ -59,6 +61,7 @@
 #include "cstone/rtc_device.h"
 #include "cstone/rtc_soft.h"
 #ifdef PLATFORM_EMBEDDED
+#  include "cstone/core_stm32.h"
 #  include "cstone/rtc_stm32.h"
 #else
 #  include "cstone/rtc_hosted.h"
@@ -150,6 +153,10 @@ DEF_PIN(g_button1,        GPIO_PORT_A, 0,   GPIO_PIN_INPUT);
 DEF_PIN(g_usb_pso,        GPIO_PORT_C, 4,   GPIO_PIN_OUTPUT_H);
 DEF_PIN(g_usb_oc,         GPIO_PORT_C, 5,   GPIO_PIN_INPUT);
 #    endif
+
+#  elif defined BOARD_STM32F401_BLACK_PILL
+DEF_PIN(g_led_heartbeat,  GPIO_PORT_C, 13,  GPIO_PIN_OUTPUT_H);
+
 
 #  elif defined BOARD_MAPLE_MINI
 // Maple Mini STM32F103CBT
@@ -343,7 +350,9 @@ uint32_t flash_sector_index(uint8_t *addr) {
       return FLASH_SECTOR_4 + flash_offset / (128 * 1024);
     }
 
-  } else {  // Bank 2
+  }
+#  if defined BOARD_STM32F429I_DISC1
+   else {  // Bank 2
     flash_offset -= 0x100000ul;
     if(flash_offset < 0x10000ul) {  // 16K (12-15)
       return FLASH_SECTOR_12 + flash_offset / (16 * 1024);
@@ -353,6 +362,9 @@ uint32_t flash_sector_index(uint8_t *addr) {
       return FLASH_SECTOR_16 + flash_offset / (128 * 1024);
     }
   }
+#  else
+  return 0;
+#  endif
 }
 #endif
 
@@ -500,7 +512,16 @@ static void platform_init(void) {
 
   // Configure RTC
 
-#if 0
+#ifdef BOARD_STM32F401_BLACK_PILL
+#  define RTC_CLK_SOURCE  RTC_CLK_EXTERN_XTAL
+#else
+#  define RTC_CLK_SOURCE  RTC_CLK_INTERN
+#endif
+
+  // External RTC clock requires GPIO config
+#if RTC_CLK_SOURCE == RTC_CLK_EXTERN_XTAL || RTC_CLK_SOURCE == RTC_CLK_EXTERN_OSC
+  gpio_enable_port(GPIO_PORT_C);
+
   // OSC32_IN (PC14)
   LL_GPIO_InitTypeDef gpio_cfg = {
     .Pin        = LL_GPIO_PIN_14,
@@ -511,24 +532,28 @@ static void platform_init(void) {
     .Alternate  = LL_GPIO_AF_15  // Datasheet Table 12 p78
   };
   LL_GPIO_Init(GPIOC, &gpio_cfg);
+
+#  if RTC_CLK_SOURCE == RTC_CLK_EXTERN_XTAL
+  // OSC32_OUT (PC15)
+  gpio_cfg.Pin = LL_GPIO_PIN_15;
+  LL_GPIO_Init(GPIOC, &gpio_cfg);
+#  endif
 #endif
 
-#ifdef PLATFORM_EMBEDDED
 
-  rtc_stm32_init(&s_rtc_device);
+#ifdef PLATFORM_EMBEDDED
+  // NOTE: Switching RTC clock sources requires a power cycle
+  rtc_stm32_init(&s_rtc_device, RTC_CLK_SOURCE, 32768);
   rtc_soft_init(&g_rtc_soft_device);
 
-
   RTC_TIMER_CLK_ENABLE();
-  // Base clock is HCLK/2
-  // Timer TIM3 is on APB1 @ 90MHz
 
 // RTC timer will tick at 1 sec intervals. We need a clock that is evenly divisible
 // into the APB clock frequency and generates a prescaler that fits into uint16_t.
 #define RTC_CLOCK_HZ  2000    // Evenly divisible into 90MHz and 84MHz
 
-  // TIM3 is on APB1 @ 45MHz with /4 prescaler. Timer clock is 2x @ 90MHz (180MHz / 2)
-  uint16_t prescaler = (uint32_t) ((SystemCoreClock / 2) / RTC_CLOCK_HZ) - 1;
+  uint32_t timer_clk = timer_clock_rate(RTC_TIMER);
+  uint16_t prescaler = (timer_clk / RTC_CLOCK_HZ) - 1;
 
   LL_TIM_InitTypeDef tim_cfg;
 
@@ -557,7 +582,7 @@ static void platform_init(void) {
 static void event_button_handler(UMsgTarget *tgt, UMsg *msg) {
   switch(msg->id) {
   case P_EVENT_BUTTON__USER_RELEASE:
-#ifdef PLATFORM_EMBEDDED
+#ifdef BOARD_STM32F429I_DISC1
     gpio_toggle(&g_led_status);
 #endif
     break;
@@ -567,6 +592,7 @@ static void event_button_handler(UMsgTarget *tgt, UMsg *msg) {
 }
 
 
+#ifdef BOARD_STM32F429I_DISC1
 // Get random value from hardware RNG
 uint32_t random_from_system(void) {
   __HAL_RCC_RNG_CLK_ENABLE();
@@ -575,6 +601,7 @@ uint32_t random_from_system(void) {
   while(!LL_RNG_IsActiveFlag_DRDY(RNG));
   return LL_RNG_ReadRandData32(RNG);
 }
+#endif
 
 
 #if USE_AUDIO

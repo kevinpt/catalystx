@@ -50,7 +50,7 @@ extern uint32_t SystemCoreClock;
 #endif
 
 // Section for heap defined in cstone rtos.c
-#ifdef PLATFORM_STM32F4
+#ifdef BOARD_STM32F429I_DISC1
 #  define FREERTOS_HEAP_SECTION   ".ccmram"
 #else
 #  define FREERTOS_HEAP_SECTION   ".noinit"
@@ -72,8 +72,10 @@ extern uint32_t SystemCoreClock;
 #define configTICK_RATE_HZ              ( ( TickType_t ) 1000 )
 #define configMAX_PRIORITIES            ( 5 )
 #define configMINIMAL_STACK_SIZE        ( (unsigned short) 400 / sizeof(StackType_t) )
-#if defined PLATFORM_STM32F4 || defined PLATFORM_HOSTED
+#if defined BOARD_STM32F429I_DISC1 || defined PLATFORM_HOSTED
 #  define configTOTAL_HEAP_SIZE           ( ( size_t ) ( 64 KB ) )
+#elif defined BOARD_STM32F401_BLACK_PILL
+#  define configTOTAL_HEAP_SIZE           ( ( size_t ) ( 20 KB ) )
 #else
 #  define configTOTAL_HEAP_SIZE           ( ( size_t ) ( 7 KB ) )
 #endif

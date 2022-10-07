@@ -37,6 +37,13 @@ boards: # Referenced by proj.board
     options:  # Mandatory options
       - USE_NEWLIB_NANO
 
+  stm32f401_black_pill:
+    platform:       stm32f4
+    linker_script:  scripts/stm32/STM32F401CCUx_FLASH.ld
+    toolchain:      arm
+    options:  # Mandatory options
+      - USE_NEWLIB_NANO
+
   hosted:
     platform: hosted
     targets:  # Additional targets for this board

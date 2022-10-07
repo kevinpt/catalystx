@@ -18,6 +18,8 @@
 
 
 void uart_io_init(void) {
+  gpio_enable_port(GPIO_PORT_A);
+
   // Configure GPIO
   GPIO_InitTypeDef uart_pin_cfg;
 
@@ -36,7 +38,7 @@ void uart_io_init(void) {
 }
 
 
-
+#if defined BOARD_STM32F429I_DISC1
 void system_clock_init(void) {
   RCC_OscInitTypeDef osc_init;
   RCC_ClkInitTypeDef clk_init;
@@ -112,6 +114,65 @@ void system_clock_init(void) {
   if(HAL_RCC_ClockConfig(&clk_init, FLASH_LATENCY_5) != HAL_OK)
     fatal_error();
 }
+
+#elif defined BOARD_STM32F401_BLACK_PILL
+void system_clock_init(void) {
+  RCC_OscInitTypeDef osc_init;
+  RCC_ClkInitTypeDef clk_init;
+
+  __HAL_RCC_PWR_CLK_ENABLE();
+
+  // Enable voltage scaling at lower clock rates
+  // VDD 2.7V - 3.6V
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+/*
+        Clock diagram in RM0368 Figure 12  p94
+                                                   : :        .--------.
+  HSE              .---------------------.         | |------->| AHB PS |---> HCLK  84MHz max
+  25MHz  .----.   |   .----.     .----.  | PLLCLK  | / SYSCLK '--------'
+--|[]|-->| /M |---|-->| *N |--+->| /P |--|-------->|/            |   .---------.
+   Y2    '----'   |   '----'  |  :----:  |                       +-->| APB1 PS |--> 42MHz max
+                  |           '->| /Q |--|---> PLL48CK (48MHz)   |   :---------:
+                  | PLL          '----'  |                       '-->| APB2 PS |--> 84MHz max
+                  '----------------------'                           '---------'
+*/
+
+
+  // Use PLL driven by HSE
+  osc_init.OscillatorType = RCC_OSCILLATORTYPE_HSE; // 25MHz Xtal
+  osc_init.HSEState       = RCC_HSE_ON;
+  osc_init.PLL.PLLState   = RCC_PLL_ON;
+  osc_init.PLL.PLLSource  = RCC_PLLSOURCE_HSE;
+
+  osc_init.PLL.PLLM       = 25;   // Div factor (2 - 63)
+  osc_init.PLL.PLLN       = 336; // Mul factor (192 - 432)
+  osc_init.PLL.PLLP       = RCC_PLLP_DIV4; // Sysclk div factor (2,4,6,8)
+  osc_init.PLL.PLLQ       = 7;   // Div factor (2 - 15) for OTG FS, SDIO, and RNG (48MHz for USB)
+  // 25 / 25 * 336 / 4 --> 84 MHz Sysclk
+  // 25 / 25 * 336 / 7 --> 48 MHz PLL48CK
+
+  if(HAL_RCC_OscConfig(&osc_init) != HAL_OK)
+    fatal_error();
+
+
+  // Use PLL as Sysclk and set division ratios for derived clocks
+  clk_init.ClockType      = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK |
+                             RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2);
+  clk_init.SYSCLKSource   = RCC_SYSCLKSOURCE_PLLCLK;
+  clk_init.AHBCLKDivider  = RCC_SYSCLK_DIV1;  // HCLK == Sysclk
+  clk_init.APB1CLKDivider = RCC_HCLK_DIV2;  // 42 MHz
+  clk_init.APB2CLKDivider = RCC_HCLK_DIV1;  // 84 MHz
+
+  // NOTE: Latency selected from Table 6 in RM0368
+  if(HAL_RCC_ClockConfig(&clk_init, FLASH_LATENCY_2) != HAL_OK) // 3.3V @ 84MHz
+    fatal_error();
+
+}
+
+#else
+#  error "Unknown target system"
+#endif
 
 #ifdef USE_TINYUSB
 void usb_io_init(void) {

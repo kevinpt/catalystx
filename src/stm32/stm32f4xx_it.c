@@ -7,7 +7,7 @@
 #include "stm32f4xx_hal.h"
 #include "stm32f4xx_ll_tim.h"
 #include "stm32f4xx_ll_usart.h"
-#include "stm32f429i_discovery.h"
+//#include "stm32f429i_discovery.h"
 
 #include "FreeRTOS.h"
 #include "semphr.h"

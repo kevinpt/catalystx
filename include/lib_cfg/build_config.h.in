@@ -28,6 +28,7 @@
 // Target board settings derived from CMake BUILD_BOARD variable
 #cmakedefine BOARD_MAPLE_MINI
 #cmakedefine BOARD_STM32F429I_DISC1
+#cmakedefine BOARD_STM32F401_BLACK_PILL
 #cmakedefine BOARD_UNKNOWN
 
 

@@ -55,6 +55,10 @@
     // STORAGE0 in STM32 sectors 1-3
 #    define LOG_NUM_SECTORS 3
 #    define LOG_SECTOR_SIZE (16 * 1024)
+#  elif defined BOARD_STM32F401_BLACK_PILL
+    // STORAGE0 in STM32 sectors 1-3
+#    define LOG_NUM_SECTORS 3
+#    define LOG_SECTOR_SIZE (16 * 1024)
 #  endif
 #endif
 

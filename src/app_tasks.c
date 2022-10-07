@@ -45,7 +45,7 @@
 
 extern UMsgHub g_msg_hub;
 
-#ifdef PLATFORM_EMBEDDED
+#ifdef BOARD_STM32F429I_DISC1
 // TASK: Create a debounce filter and button event manager for button1
 static Debouncer s_user_button;
 
@@ -65,12 +65,12 @@ static void debounce_task_cb(TimerHandle_t timer) {
   }
 
 }
-#endif // PLATFORM_EMBEDDED
+#endif // BOARD_STM32F429I_DISC1
 
 
 void app_tasks_init(void) {
 
-#ifdef PLATFORM_EMBEDDED
+#ifdef BOARD_STM32F429I_DISC1
   // Button pulled low by default
   debouncer_init(&s_user_button, DEBOUNCE_TASK_MS, DEBOUNCE_FILTER_MS, /*init_filter*/false);
 
