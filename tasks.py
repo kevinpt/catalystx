@@ -204,6 +204,17 @@ def program(c, probe=None, target=None):
     raise Exit(f'ERROR: Unsupported probe "{probe}"')
 
 
+def run_gdb(c, script, elf_image=''):
+  '''Manage running GDB with batch script'''
+  fh = tempfile.NamedTemporaryFile(prefix='gdb_')
+  fh.write(script.encode('utf-8'))
+  fh.flush()
+  os.fsync(fh.fileno())
+
+  c.run(f'gdb-multiarch {elf_image} --batch -x {fh.name}')
+  fh.close()
+
+
 def prog_blackmagic(c, target):
   '''Program image using a Blackmagic Probe'''
   probe_cfg = c.probes.blackmagic
@@ -221,13 +232,7 @@ attach 1
 load
 kill
 '''
-  fh = tempfile.NamedTemporaryFile(prefix='gdb_')
-  fh.write(gdb_script.encode('utf-8'))
-  fh.flush()
-  os.fsync(fh.fileno())
-
-  c.run(f'gdb-multiarch {elf_image} --batch -x {fh.name}')
-  fh.close()
+  run_gdb(c, gdb_script, elf_image)
 
 
 def prog_stlink(c, target):
@@ -265,6 +270,20 @@ def debug(c, target=None):
 
 @task
 def console(c, device=None, baud=None):
+  # Blackmagic probe needs TPWR configured for UART
+  fixture = get_fixture(c)
+  if fixture and 'probe' in fixture and fixture.probe == 'blackmagic':
+    probe_cfg = c.probes.blackmagic
+    tpwr = 'enable' if probe_cfg.tpwr else 'disable'
+
+    gdb_script = \
+f'''target extended-remote {probe_cfg.device}
+monitor tpwr {tpwr}
+kill
+'''
+    run_gdb(c, gdb_script)
+
+
   if device is None:
     device = get_fixture(c).console.device
   if baud is None:
