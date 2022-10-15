@@ -4,6 +4,7 @@
 #define PROP_LIST_APP(M) \
 \
 M(P2, AUDIO,     60) \
+M(P2, KEY,       61) \
 \
 M(P3, INST0,  60) \
 \
@@ -23,6 +24,9 @@ enum PropElementsApp {
 #define P_APP_AUDIO_INST0_FREQ    (P1_APP | P2_AUDIO | P3_INST0 | P4_FREQ)
 #define P_APP_AUDIO_INST0_WAVE    (P1_APP | P2_AUDIO | P3_INST0 | P4_WAVE)
 #define P_APP_AUDIO_INST0_CURVE   (P1_APP | P2_AUDIO | P3_INST0 | P4_CURVE)
+
+#define P_EVENT_KEY_n_PRESS       (P1_EVENT | P2_KEY | P2_ARR(0) | P4_PRESS)
+#define P_EVENT_KEY_n_RELEASE     (P1_EVENT | P2_KEY | P2_ARR(0) | P4_RELEASE)
 
 
 #endif // APP_PROP_ID_H

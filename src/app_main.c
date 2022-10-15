@@ -607,15 +607,15 @@ uint32_t random_from_system(void) {
 #if USE_AUDIO
 /*
 Adafruit
-MAX98357      STM32F429     DISCO1
----------     ----------    -----------
-VDD     1                   P1-1  (5V)
-GND     2                   P1-64
-SD Mode 3     GPIO  PE1     P1-18       0 = Shutdown, 1 = L, z = L/2+R/2
-Gain    4     GPIO  PE3     P1-16       0 = 12dB,  1 = 3dB,  z = 9dB
-Din     5     SD    PC3     P2-15
-BCLK    6     CK    PB10    P2-48
-LRCLK   7     WS    PB9     P1-20
+MAX98357        STM32F429     DISCO1        Black pill
+---------       ----------    ----------    ----------
+VDD     1                     P1-1  (5V)
+GND     2                     P1-64
+SD Mode 3       GPIO  PE1     P1-18                       0 = Shutdown, 1 = L, z = L/2+R/2
+Gain    4       GPIO  PE3     P1-16                       0 = 12dB,  1 = 3dB,  z = 9dB
+Din     5 Y     SD    PC3     P2-15         B15
+BCLK    6 G     CK    PB10    P2-48         B10
+LRCLK   7 O     WS    PB9     P1-20         B9
 */
 
 DEF_PIN(g_i2s_sd_mode,  GPIO_PORT_E, 3,  GPIO_PIN_OUTPUT_L);  // Shutdown not Serial Data
@@ -720,6 +720,15 @@ static void audio_ctl_handler(UMsgTarget *tgt, UMsg *msg) {
     break;
 
   default:
+    {
+      // Check for key presses
+      uint32_t id_masked = msg->id & ~PROP_MASK(3);
+      if(id_masked == P_EVENT_KEY_n_PRESS) {
+        synth_press_key(&g_audio_synth, PROP_FIELD(msg->id, 3), 0);
+      } else if(id_masked == P_EVENT_KEY_n_RELEASE) {
+        synth_release_key(&g_audio_synth, PROP_FIELD(msg->id, 3));
+      }
+    }
     break;
   }
 }
@@ -819,6 +828,7 @@ static void portable_init(void) {
   umsg_tgt_callback_init(&g_tgt_audio_ctl, audio_ctl_handler);
   umsg_tgt_add_filter(&g_tgt_audio_ctl, (P1_APP | P2_AUDIO | P3_MSK | P4_MSK));
   umsg_tgt_add_filter(&g_tgt_audio_ctl, (P_EVENT_BUTTON_n_PRESS | P3_MSK | P4_MSK));
+  umsg_tgt_add_filter(&g_tgt_audio_ctl, (P_EVENT_KEY_n_PRESS | P3_MSK | P4_MSK));
   umsg_hub_subscribe(&g_msg_hub, &g_tgt_audio_ctl);
 #endif
 
@@ -837,6 +847,7 @@ static void portable_init(void) {
 
 
 int main(void) {
+  sys_stack_fill();
   platform_init();
   portable_init();
 

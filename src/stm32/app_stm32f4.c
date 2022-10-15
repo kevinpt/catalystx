@@ -275,16 +275,24 @@ void i2s_io_init(void) {
   __HAL_RCC_GPIOC_CLK_ENABLE();
 
 
-  // SD (PC3)
+  // SD (PC3 DISCO1)  (B15 Blackpill)
   LL_GPIO_InitTypeDef gpio_cfg = {
+#ifdef BOARD_STM32F429I_DISC1
     .Pin        = LL_GPIO_PIN_3,
+#else
+    .Pin        = LL_GPIO_PIN_15,
+#endif
     .Mode       = LL_GPIO_MODE_ALTERNATE,
     .Speed      = LL_GPIO_SPEED_FREQ_MEDIUM,
     .OutputType = LL_GPIO_OUTPUT_PUSHPULL,
     .Pull       = LL_GPIO_PULL_NO,
     .Alternate  = LL_GPIO_AF_5  // Datasheet Table 12 p77
   };
+#ifdef BOARD_STM32F429I_DISC1
   LL_GPIO_Init(GPIOC, &gpio_cfg);
+#else
+  LL_GPIO_Init(GPIOB, &gpio_cfg);
+#endif
 
   // WS (PB9)  CK (PB10)
   gpio_cfg.Pin = LL_GPIO_PIN_9 | LL_GPIO_PIN_10;

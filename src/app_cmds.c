@@ -26,6 +26,7 @@
 
 #include "cstone/iqueue_int16_t.h"
 #if USE_AUDIO
+#  include "cstone/umsg.h"
 #  include "audio_synth.h"
 #endif
 
@@ -38,6 +39,89 @@ static int32_t cmd_demo(uint8_t argc, char *argv[], void *eval_ctx) {
 
   return 0;
 }
+
+
+#if USE_AUDIO
+
+static void key__input_redirect(Console *con, KeyCode key_code, void *eval_ctx) {
+  static uint8_t key_state[10] = {0};
+
+  // Toggle key states by pressing digits 0-9
+  if(key_code >= '0' && key_code <= '9') {
+    uint32_t key = key_code - '0';
+    uint32_t id;
+    key_state[key] = !key_state[key];
+    bool release = (key_state[key] == 0);
+    key += 81;
+
+    if(release)
+      id = P_EVENT_KEY_n_RELEASE | P2_ARR(key);
+    else
+      id = P_EVENT_KEY_n_PRESS | P2_ARR(key);
+
+    UMsg msg = {
+      .id = id,
+      .source = P_RSRC_HW_LOCAL_TASK
+    };
+
+    umsg_hub_send(umsg_sys_hub(), &msg, 1);
+
+  } else if(key_code == CH_CTRL_C) {
+    shell_cancel_redirect(&con->shell);
+  }
+}
+
+
+static int32_t cmd_key(uint8_t argc, char *argv[], void *eval_ctx) {
+  GetoptState state = {0};
+  state.report_errors = true;
+  int c;
+
+  bool interactive = false;
+  bool release = false;
+
+  while((c = getopt_r(argv, "rih", &state)) != -1) {
+    switch(c) {
+    case 'i': interactive = true; break;
+    case 'r': release = true; break;
+
+    case 'h':
+      puts("key [-i] [-p] [-r] [-h]");
+      return 0;
+      break;
+
+    default:
+    case ':':
+    case '?':
+      return -3;
+      break;
+    }
+  }
+
+  if(interactive) {
+    puts("Play keys 0-9");
+    Console *con = active_console();
+    shell_redirect_input(&con->shell, key__input_redirect);
+    return 0;
+  }
+
+  uint32_t key = 69+12;
+  uint32_t id;
+
+  if(release)
+    id = P_EVENT_KEY_n_RELEASE | P2_ARR(key);
+  else
+    id = P_EVENT_KEY_n_PRESS | P2_ARR(key);
+
+  UMsg msg = { .id = id,
+    .source = P_RSRC_HW_LOCAL_TASK };
+
+  umsg_hub_send(umsg_sys_hub(), &msg, 1);
+
+  return 0;
+}
+#endif
+
 
 #ifdef PLATFORM_STM32F4
 static RegField s_reg_rcc_cfgr_fields[] = {
@@ -316,6 +400,7 @@ const ConsoleCommandDef g_app_cmd_set[] = {
   CMD_DEF("demo",     cmd_demo,  "Demo app command"),
 #if USE_AUDIO
   CMD_DEF("audio",    cmd_audio,      "Sound control"),
+  CMD_DEF("key",      cmd_key,        "Play key"),
 #endif
 #ifdef PLATFORM_STM32F4
   CMD_DEF("rcc",      cmd_rcc,        "Debug RCC"),

@@ -144,6 +144,7 @@ void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s) {
 
 static void audio_synth_task(void *ctx) {
   while(1) {
+    // Woken by notification from DMA ISR callbacks
     ulTaskNotifyTake(/*xClearCountOnExit*/ pdTRUE, portMAX_DELAY);
     fill_dma_buffer(g_audio_synth.next_buf, I2S_DMA_BUF_SAMPLES / 2);
   }

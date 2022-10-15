@@ -270,9 +270,10 @@ def debug(c, target=None):
 
 @task
 def console(c, device=None, baud=None):
-  # Blackmagic probe needs TPWR configured for UART
   fixture = get_fixture(c)
-  if fixture and 'probe' in fixture and fixture.probe == 'blackmagic':
+
+  # Blackmagic probe needs TPWR configured for UART
+  if 'probe' in fixture and fixture.probe == 'blackmagic':
     probe_cfg = c.probes.blackmagic
     tpwr = 'enable' if probe_cfg.tpwr else 'disable'
 
@@ -285,9 +286,9 @@ kill
 
 
   if device is None:
-    device = get_fixture(c).console.device
+    device = fixture.console.device
   if baud is None:
-    baud = get_fixture(c).console.baud
+    baud = fixture.console.baud
 
   cmd = f'screen -T VT100 {device} {baud}'
   os.execvp('screen', cmd.split())
