@@ -18,8 +18,10 @@
 #include "cstone/core_stm32.h"
 #include "i2s.h"
 #include "sample_device.h"
-#include "sample_device_dac.h"
-#include "dac.h"
+#ifdef USE_AUDIO_DAC
+#  include "sample_device_dac.h"
+#  include "dac.h"
+#endif
 #include "app_main.h"
 #include "app_stm32.h"
 #include "app_gpio.h"
@@ -254,7 +256,7 @@ static const uint16_t s_demo_dac_data[] = {
 };
 #endif
 
-
+#  ifdef USE_AUDIO_DAC
 void dac_hw_init(SampleDeviceDAC *sdev) {
 /*
 Setup hardware to enable DAC output on GPIO port pin. DAC samples are driven by a timer
@@ -369,7 +371,7 @@ for new data after every half-buffer is consumed.
   LL_DAC_Enable(sdev->DAC_periph, sdev->DAC_channel);
   LL_DAC_EnableTrigger(sdev->DAC_periph, sdev->DAC_channel);
 }
-
+#  endif // USE_AUDIO_DAC
 
 void i2s_io_init(void) {
 #if AUDIO_SAMPLE_RATE == 8000

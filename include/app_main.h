@@ -89,7 +89,7 @@
 #    define USE_HAL_I2S     // FIXME: Convert I2S/DMA to LL API
 #  endif
 #endif
-#define AUDIO_DMA_BUF_SAMPLES   256
+#define AUDIO_DMA_BUF_SAMPLES   512
 
 // ******************** App properties ********************
 

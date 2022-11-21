@@ -921,7 +921,7 @@ int main(void) {
   app_tasks_init();
 
 #if USE_AUDIO
-  synth_init(&g_audio_synth, AUDIO_SAMPLE_RATE, 256);
+  synth_init(&g_audio_synth, AUDIO_SAMPLE_RATE, 260);
   //synth_set_marker(&g_audio_synth, /*enable*/ true);
 
 
@@ -938,7 +938,6 @@ int main(void) {
     .half_buf_samples = AUDIO_DMA_BUF_SAMPLES / 2,
     .channels = 1,
     .sample_out = i2s_synth_out,
-    .dev_ctl = NULL
   };
 
   sdev_init_i2s(&s_dev_audio, &dev_audio_cfg, &g_audio_synth, &g_i2s);

@@ -109,7 +109,7 @@ void HAL_I2S_TxHalfCpltCallback(I2S_HandleTypeDef *hi2s) {
   set_led(LED_STATUS, 1);
 
   // Fill low half of DMA buffer
-  g_audio_synth.next_buf = &g_audio_buf[0];
+  g_audio_synth.next_buf = g_dev_audio->cfg.dma_buf_low;
   vTaskNotifyGiveFromISR(g_audio_synth_task, &high_prio_task);
   // FIXME: Need to call portYIELD_FROM_ISR(high_prio_task);
 }
@@ -119,7 +119,7 @@ void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s) {
   set_led(LED_STATUS, 0);
 
   // Fill high half of DMA buffer
-  g_audio_synth.next_buf = &g_audio_buf[COUNT_OF(g_audio_buf) / 2];
+  g_audio_synth.next_buf = g_dev_audio->cfg.dma_buf_high;
   vTaskNotifyGiveFromISR(g_audio_synth_task, &high_prio_task);
   // FIXME: Need to call portYIELD_FROM_ISR(high_prio_task);
 }
@@ -150,7 +150,8 @@ void audio_tasks_init(void) {
   __HAL_DMA_ENABLE_IT(&g_dma, DMA_IT_TC);
   __HAL_DMA_ENABLE_IT(&g_dma, DMA_IT_HT);
 
-  HAL_I2S_Transmit_DMA(&g_i2s, (uint16_t *)g_audio_buf, COUNT_OF(g_audio_buf));
+  HAL_I2S_Transmit_DMA(&g_i2s, (uint16_t *)g_dev_audio->cfg.dma_buf_low,
+                        g_dev_audio->cfg.half_buf_samples*4);
   HAL_I2S_DMAPause(&g_i2s);
 //  gpio_highz_off(&g_i2s_sd_mode, false); // Shutdown mode on
 
