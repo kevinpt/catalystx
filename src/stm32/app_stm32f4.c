@@ -2,16 +2,24 @@
 #include <stdbool.h>
 
 #include "lib_cfg/build_config.h"
+#include "lib_cfg/cstone_cfg_stm32.h"
 #include "stm32f4xx_hal.h"
 #include "stm32f4xx_ll_bus.h"
 #include "stm32f4xx_ll_gpio.h"
 #include "stm32f4xx_ll_rcc.h"
+#include "stm32f4xx_ll_tim.h"
+#include "stm32f4xx_ll_dac.h"
+#include "stm32f4xx_ll_dma.h"
 
 #include "FreeRTOS.h"
 
 #include "cstone/io/uart.h"
 #include "cstone/io/usb.h"
+#include "cstone/core_stm32.h"
 #include "i2s.h"
+#include "sample_device.h"
+#include "sample_device_dac.h"
+#include "dac.h"
 #include "app_main.h"
 #include "app_stm32.h"
 #include "app_gpio.h"
@@ -238,6 +246,127 @@ OC      C5  Overcurrent input (active low) from U8
 
 
 #if USE_AUDIO
+
+#if 0
+_Alignas(uint32_t)
+static const uint16_t s_demo_dac_data[] = {
+  0, 16384, 32768, 49152, 65535
+};
+#endif
+
+
+//extern int16_t *g_audio_buf;  // DMA transfer buffer
+//extern int16_t *g_audio_buf_low;
+
+void dac_hw_init(SampleDeviceDAC *sdev) {
+  // IO init
+
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+
+  // DAC_OUT1 (PA4 DISCO1)
+  LL_GPIO_InitTypeDef gpio_cfg = {
+    .Pin        = LL_GPIO_PIN_4,
+    .Mode       = LL_GPIO_MODE_ANALOG,
+    .Speed      = LL_GPIO_SPEED_FREQ_LOW,
+    .OutputType = LL_GPIO_OUTPUT_PUSHPULL,
+    .Pull       = LL_GPIO_PULL_NO,
+    .Alternate  = LL_GPIO_AF_0  // Datasheet Table 12 p77
+  };
+
+  LL_GPIO_Init(GPIOA, &gpio_cfg);
+
+  // Init buffer data to mid-scale
+  int16_t *buf_pos = sdev->base.cfg.dma_buf_low;
+  size_t buf_samples = sdev->base.cfg.half_buf_samples * 2;
+  while(buf_samples > 0) {
+    *buf_pos++ = DAC_SAMPLE_ZERO;
+    buf_samples--;
+  }
+
+
+  // Timer setup
+  DAC_TIMER_CLK_ENABLE();
+
+  uint32_t timer_clk = timer_clock_rate(DAC_TIMER);
+  uint16_t prescaler = (timer_clk / DAC_TIMER_CLOCK_HZ) - 1;
+
+  LL_TIM_InitTypeDef tim_cfg;
+
+  LL_TIM_StructInit(&tim_cfg);
+  tim_cfg.Autoreload    = (DAC_TIMER_CLOCK_HZ / AUDIO_SAMPLE_RATE) - 1;
+  tim_cfg.Prescaler     = prescaler;
+
+  LL_TIM_SetCounter(DAC_TIMER, 0);
+  LL_TIM_Init(DAC_TIMER, &tim_cfg);
+
+  //LL_TIM_EnableIT_UPDATE(DAC_TIMER);
+  LL_TIM_SetTriggerOutput(DAC_TIMER, LL_TIM_TRGO_UPDATE);
+  LL_TIM_EnableCounter(DAC_TIMER);
+
+  HAL_NVIC_SetPriority(DAC_TIMER_IRQ, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY, 0);
+  NVIC_EnableIRQ(DAC_TIMER_IRQ);
+  
+
+  // DMA setup
+  __HAL_RCC_DMA1_CLK_ENABLE();  // FIXME: Hardcode
+
+  DMA_TypeDef *DMA_periph = sdev->base.cfg.DMA_periph;
+  uint32_t DMA_stream = sdev->base.cfg.DMA_stream;
+
+  LL_DMA_SetChannelSelection(DMA_periph, DMA_stream, LL_DMA_CHANNEL_7); // FIXME: Hardcode
+  LL_DMA_ConfigTransfer(DMA_periph,
+                        DMA_stream,
+                        LL_DMA_DIRECTION_MEMORY_TO_PERIPH |
+                        LL_DMA_MODE_CIRCULAR              |
+                        LL_DMA_PERIPH_NOINCREMENT         |
+                        LL_DMA_MEMORY_INCREMENT           |
+                        LL_DMA_PDATAALIGN_HALFWORD        |
+                        LL_DMA_MDATAALIGN_HALFWORD        |
+                        LL_DMA_PRIORITY_HIGH
+                        );
+
+  LL_DMA_ConfigAddresses(DMA_periph,
+                         DMA_stream,
+                         (uint32_t)sdev->base.cfg.dma_buf_low,
+                         LL_DAC_DMA_GetRegAddr(sdev->DAC_periph, sdev->DAC_channel,
+                                                LL_DAC_DMA_REG_DATA_12BITS_LEFT_ALIGNED),
+                         LL_DMA_DIRECTION_MEMORY_TO_PERIPH);
+  
+  LL_DMA_SetDataLength(DMA_periph, DMA_stream, AUDIO_DMA_BUF_SAMPLES);
+//  LL_DMA_EnableIT_TE(DMA1, LL_DMA_STREAM_5);
+  LL_DMA_EnableIT_HT(DMA_periph, DMA_stream);
+  LL_DMA_EnableIT_TC(DMA_periph, DMA_stream);
+  LL_DMA_EnableStream(DMA_periph, DMA_stream);
+
+  // FIXME: Hardcoded stream
+  HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY+1, 0);
+  NVIC_EnableIRQ(DMA1_Stream5_IRQn);
+
+
+  // DAC setup
+  __HAL_RCC_DAC_CLK_ENABLE();
+ 
+  LL_DAC_InitTypeDef dac_cfg = {
+    .TriggerSource      = LL_DAC_TRIG_EXT_TIM6_TRGO, //LL_DAC_TRIG_SOFTWARE,
+    .WaveAutoGeneration = LL_DAC_WAVE_AUTO_GENERATION_NONE,
+//    .WaveAutoGenerationConfig =,
+    .OutputBuffer       = LL_DAC_OUTPUT_BUFFER_ENABLE
+  };
+
+  LL_DAC_Init(sdev->DAC_periph, sdev->DAC_channel, &dac_cfg);
+
+  //LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, 0);
+  LL_DAC_ConvertData12LeftAligned(sdev->DAC_periph, sdev->DAC_channel, 0x8000);
+  
+//  LL_DAC_EnableDMAReq(DAC1, LL_DAC_CHANNEL_1);
+  LL_DAC_EnableIT_DMAUDR1(sdev->DAC_periph);
+  
+  LL_DAC_Enable(sdev->DAC_periph, sdev->DAC_channel);
+  LL_DAC_EnableTrigger(sdev->DAC_periph, sdev->DAC_channel);
+
+}
+
+
 void i2s_io_init(void) {
 #if AUDIO_SAMPLE_RATE == 8000
   RCC_PeriphCLKInitTypeDef i2s_clk_cfg = {
@@ -254,6 +383,14 @@ void i2s_io_init(void) {
     .PLLI2S = { // PLLI2S VCO (Output from *N) must be between 100 and 432MHz
       .PLLI2SN = 192, // From RM0090 Table 127
       .PLLI2SR = 3
+    }
+  };
+#elif AUDIO_SAMPLE_RATE == 100
+RCC_PeriphCLKInitTypeDef i2s_clk_cfg = {
+    .PeriphClockSelection = RCC_PERIPHCLK_I2S,
+    .PLLI2S = { // PLLI2S VCO (Output from *N) must be between 100 and 432MHz
+      .PLLI2SN = 192, // From RM0090 Table 127
+      .PLLI2SR = 2
     }
   };
 #else

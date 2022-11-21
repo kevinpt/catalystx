@@ -246,6 +246,9 @@ set(APP_SOURCE_COMMON
     src/app_tasks.c
     src/app_cmds.c
     src/build_info.c
+    $<$<BOOL:${USE_AUDIO}>:src/sample_device.c>
+    $<$<BOOL:${USE_AUDIO}>:src/sample_device_i2s.c>
+    $<$<BOOL:${USE_AUDIO}>:src/sample_device_dac.c>
     $<$<BOOL:${USE_FILESYSTEM}>:src/cmds_filesys.c>
     $<$<BOOL:${USE_FILESYSTEM}>:src/log_evfs.c>
     ${CMAKE_BINARY_DIR}/template/cstone/iqueue_int16_t.h

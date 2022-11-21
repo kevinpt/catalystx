@@ -280,7 +280,7 @@ def console(c, device=None, baud=None):
     gdb_script = \
 f'''target extended-remote {probe_cfg.device}
 monitor tpwr {tpwr}
-kill
+quit
 '''
     run_gdb(c, gdb_script)
 

@@ -97,7 +97,17 @@
 
 #if defined PLATFORM_EMBEDDED && USE_AUDIO
 #  include "audio_synth.h"
+#  include "sample_device.h"
+
 #  include "i2s.h"
+#  include "sample_device_i2s.h"
+
+#  ifdef USE_AUDIO_DAC
+#    include "stm32f4xx_ll_dac.h"
+#    include "stm32f4xx_ll_dma.h"
+#    include "sample_device_dac.h"
+#    include "dac.h"
+#  endif
 #endif
 
 
@@ -110,6 +120,21 @@ UMsgTarget  g_tgt_event_buttons;
 #if USE_AUDIO
 UMsgTarget  g_tgt_audio_ctl;
 SynthState  g_audio_synth;
+
+//SampleDeviceI2S s_dev_audio; // FIXME: Select with macro
+SampleDeviceDAC s_dev_audio;
+SampleDevice *g_dev_audio = (SampleDevice *)&s_dev_audio;
+
+#  ifdef USE_AUDIO_I2S
+#    define AUDIO_DMA_BUF_CHANNELS  2   // Requires stereo output
+#  else
+#    define AUDIO_DMA_BUF_CHANNELS  1
+#  endif
+_Alignas(int32_t)
+int16_t g_audio_buf[AUDIO_DMA_BUF_SAMPLES * AUDIO_DMA_BUF_CHANNELS];
+
+int16_t *g_audio_buf_low = &g_audio_buf[0];
+int16_t *g_audio_buf_high = &g_audio_buf[COUNT_OF(g_audio_buf)/2];
 #endif
 
 
@@ -153,6 +178,10 @@ DEF_PIN(g_button1,        GPIO_PORT_A, 0,   GPIO_PIN_INPUT);
 DEF_PIN(g_usb_pso,        GPIO_PORT_C, 4,   GPIO_PIN_OUTPUT_H);
 DEF_PIN(g_usb_oc,         GPIO_PORT_C, 5,   GPIO_PIN_INPUT);
 #    endif
+
+#  if USE_AUDIO
+//DEF_PIN(g_dac_pin,        GPIO_PORT_A, 4,  GPIO_PIN_OUTPUT_L);
+#  endif
 
 #  elif defined BOARD_STM32F401_BLACK_PILL
 DEF_PIN(g_led_heartbeat,  GPIO_PORT_C, 13,  GPIO_PIN_OUTPUT_H);
@@ -626,8 +655,7 @@ DEF_PIN(g_i2s_gain,     GPIO_PORT_E, 1,  GPIO_PIN_OUTPUT_H);  // 3dB default
 //DEF_PIN(g_i2s_mco,     GPIO_PORT_C, 9,  GPIO_PIN_OUTPUT_H);
 
 
-#ifdef USE_HAL_I2S
-//#define AUDIO_SAMPLE_RATE   16000
+#  ifdef USE_HAL_I2S
 
 I2S_HandleTypeDef g_i2s = {
   .Instance = SPI2,
@@ -667,8 +695,24 @@ DMA_HandleTypeDef g_dma = {
     .PeriphBurst          = DMA_PBURST_SINGLE
   }
 };
-#endif // USE_HAL_I2S
+#  endif // USE_HAL_I2S
 
+#if 0
+typedef enum {
+  AUDIO_ENABLE,
+  AUDIO_DISABLE,  // Schedule to shutdown after source is idle
+  AUDIO_FORCE_OFF
+} AudioState;
+
+void audio_set_state(AudioState state) {
+  switch(state) {
+  case AUDIO_ENABLE:
+    
+  case AUDIO_DISABLE:
+  case AUDIO_FORCE_OFF:
+  }
+}
+#endif
 
 static void audio_ctl_handler(UMsgTarget *tgt, UMsg *msg) {
   // Avoid message loops for props set by console commands
@@ -676,22 +720,32 @@ static void audio_ctl_handler(UMsgTarget *tgt, UMsg *msg) {
 //    return;
 
 //  printf(A_CYN "AUDIO: " PROP_ID " = %" PRIu32 "\n" A_NONE, msg->id, (uint32_t)msg->payload);
-  static int next_key = 0;
+//  static int next_key = 0;
 
   switch(msg->id) {
   case P_APP_AUDIO_INFO_VALUE: // Enable/disable synth
-#if 1
-    if(msg->payload)
-      HAL_I2S_DMAResume(&g_i2s);
-    else
-      HAL_I2S_DMAPause(&g_i2s);
-#else
-    if(msg->payload)
-      gpio_highz_off(&g_i2s_sd_mode, true);  // Shutdown off L channel only
-      //gpio_highz_on(&g_i2s_sd_mode);  // Disable shutdown L/2+R/2
-    else
-      gpio_highz_off(&g_i2s_sd_mode, false);  // Activate shutdown
-#endif
+
+    sdev_ctl(g_dev_audio, msg->payload ? SDEV_OP_ACTIVATE : SDEV_OP_DEACTIVATE, NULL, 0);
+/*#if 1*/
+/*#ifdef USE_AUDIO_I2S*/
+/*    if(msg->payload)*/
+/*      HAL_I2S_DMAResume(&g_i2s);*/
+/*    else*/
+/*      HAL_I2S_DMAPause(&g_i2s);*/
+/*#endif*/
+/*#ifdef USE_AUDIO_DAC*/
+/*    if(msg->payload)*/
+/*      LL_DAC_EnableDMAReq(DAC1, LL_DAC_CHANNEL_1); // FIXME: Get from device*/
+/*    else*/
+/*      LL_DAC_DisableDMAReq(DAC1, LL_DAC_CHANNEL_1);*/
+/*#endif*/
+/*#else*/
+/*    if(msg->payload)*/
+/*      gpio_highz_off(&g_i2s_sd_mode, true);  // Shutdown off L channel only*/
+/*      //gpio_highz_on(&g_i2s_sd_mode);  // Disable shutdown L/2+R/2*/
+/*    else*/
+/*      gpio_highz_off(&g_i2s_sd_mode, false);  // Activate shutdown*/
+/*#endif*/
     break;
 
   case P_APP_AUDIO_INST0_FREQ:
@@ -706,25 +760,29 @@ static void audio_ctl_handler(UMsgTarget *tgt, UMsg *msg) {
     synth_set_adsr_curve(&g_audio_synth, 0, msg->payload);
     break;
 
+#if 0
   case P_EVENT_BUTTON__USER_PRESS:
     synth_press_key(&g_audio_synth, next_key + 69+12, 0);
-//    puts("Press");
+    puts("Press");
     break;
 
   case P_EVENT_BUTTON__USER_RELEASE:
     synth_release_key(&g_audio_synth, next_key + 69+12);
-//    printf("Release %d\n", next_key);
+    printf("Release %d\n", next_key);
     next_key++;
     if(next_key >= 13)
       next_key = 0;
     break;
+#endif
 
   default:
     {
       // Check for key presses
       uint32_t id_masked = msg->id & ~PROP_MASK(3);
       if(id_masked == P_EVENT_KEY_n_PRESS) {
+        // Ensure an active voice is ready before activating the sample device
         synth_press_key(&g_audio_synth, PROP_FIELD(msg->id, 3), 0);
+        sdev_ctl(g_dev_audio, SDEV_OP_ACTIVATE, NULL, 0);
       } else if(id_masked == P_EVENT_KEY_n_RELEASE) {
         synth_release_key(&g_audio_synth, PROP_FIELD(msg->id, 3));
       }
@@ -863,34 +921,66 @@ int main(void) {
   app_tasks_init();
 
 #if USE_AUDIO
-  i2s_io_init();
+  synth_init(&g_audio_synth, AUDIO_SAMPLE_RATE, 256);
+  //synth_set_marker(&g_audio_synth, /*enable*/ true);
+
 
 #ifdef USE_HAL_I2S
+  i2s_io_init();
+
   if(HAL_I2S_Init(&g_i2s) != HAL_OK) {
     DPUTS("I2S init error");
   }
+
+  SampleDeviceCfg dev_audio_cfg = {
+    .dma_buf_low = g_audio_buf_low,
+    .dma_buf_high = g_audio_buf_high,
+    .half_buf_samples = AUDIO_DMA_BUF_SAMPLES / 2,
+    .channels = 1,
+    .sample_out = i2s_synth_out,
+    .dev_ctl = NULL
+  };
+
+  sdev_init_i2s(&s_dev_audio, &dev_audio_cfg, &g_audio_synth, &g_i2s);
 #endif
 
-  synth_init(&g_audio_synth, AUDIO_SAMPLE_RATE, 512);
+#ifdef USE_AUDIO_DAC
+  SampleDeviceCfg dev_audio_cfg = {
+    .dma_buf_low = g_audio_buf_low,
+    .dma_buf_high = g_audio_buf_high,
+    .half_buf_samples = AUDIO_DMA_BUF_SAMPLES / 2,
+    .channels = 1,
+    .DMA_periph = DMA1,
+    .DMA_stream = LL_DMA_STREAM_5,  // RM0090  Table 42   DAC1 stream
+
+    .sample_out = dac_synth_out
+  };
+
+  sdev_init_dac(&s_dev_audio, &dev_audio_cfg, &g_audio_synth, DAC1, LL_DAC_CHANNEL_1);
+
+  dac_hw_init(&s_dev_audio);
+#endif
+
 
   // Configure synth instruments
-  uint16_t modulate_freq = frequency_scale_factor(880, 880+50);
+  //uint16_t modulate_freq = frequency_scale_factor(880, 880+50);
 
   SynthVoiceCfg voice_cfg = {
     .osc_freq = 0,
     .osc_kind = OSC_SINE,
 
-    .lfo_freq = 6,
+    .lfo_freq = 0,
     .lfo_kind = OSC_TRIANGLE,
 
-    .adsr.attack  = 200,
-    .adsr.decay   = 600,
-    .adsr.sustain = 24000,
-    .adsr.release = 1500,
-    .adsr.curve   = CURVE_LINEAR,
+    .adsr.attack  = 100,
+    .adsr.decay   = 100,
+    .adsr.sustain = 20000,
+    .adsr.release = 100,
+    .adsr.curve   = CURVE_SPLINE,
+    .adsr.spline_weight = 0,
 
     .lpf_cutoff_freq  = 1000,
-    .modulate_freq    = modulate_freq,
+    .modulate_freq    = 0, //modulate_freq,
     .modulate_amp     = 0, //INT16_MAX - 20000,
     .modulate_cutoff  = 0
   };

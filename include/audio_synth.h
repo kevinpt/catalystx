@@ -32,7 +32,8 @@ typedef enum {
 typedef enum {
   CURVE_LINEAR = 0,
   CURVE_ULAW,
-  CURVE_LOG
+  CURVE_LOG,
+  CURVE_SPLINE
 } ADSRCurve;
 
 typedef struct {
@@ -41,6 +42,7 @@ typedef struct {
   int16_t sustain;
   uint16_t release;
   ADSRCurve curve;
+  int16_t spline_weight;
 } SynthADSRCfg;
 
 
@@ -107,21 +109,29 @@ typedef struct  {
 #define SYNTH_MAX_VOICES  16
 #define SYNTH_MAX_KEYS    128
 #define SYNTH_MAX_INSTRUMENTS 2
+
+typedef enum {
+  VOICES_IDLE = 0,
+  VOICES_ACTIVE,
+  VOICES_RELEASE
+} VoiceState;
+
 typedef struct {
-  uint32_t sample_rate;
-  int16_t attenuation;
+  uint32_t    sample_rate;
+  int16_t     attenuation;
 
-  SynthVoice voices[SYNTH_MAX_VOICES];
-  int8_t next_voice;
+  SynthVoice  voices[SYNTH_MAX_VOICES];
+  int8_t      next_voice;
+  VoiceState  voice_state;
 
-  int8_t key_voices[SYNTH_MAX_KEYS];
+  int8_t      key_voices[SYNTH_MAX_KEYS];
   SynthVoiceCfg instruments[SYNTH_MAX_INSTRUMENTS];
 
-
   IQueue_int16_t *queue;
-  int16_t *next_buf;
-  uint32_t timestamp;
-  uint32_t sample_count;
+  int16_t    *next_buf;
+  uint32_t    timestamp;
+  uint32_t    sample_count;
+  bool        marker;
 } SynthState;
 
 
@@ -134,6 +144,7 @@ int16_t frequency_scale_factor(uint16_t ref_freq, uint16_t peak_freq);
 uint32_t ddfs_increment(uint32_t sample_rate, uint32_t target_freq, uint32_t target_scale);
 
 void synth_init(SynthState *synth, uint32_t sample_rate, size_t queue_size);
+void synth_set_marker(SynthState *synth, bool enable);
 void synth_set_freq(SynthState *synth, int voice, uint32_t frequency);
 void synth_set_waveform(SynthState *synth, int voice, OscKind kind);
 void synth_set_adsr_curve(SynthState *synth, int voice, ADSRCurve curve);
@@ -142,7 +153,7 @@ void synth_oscillator_init(SynthState *synth, SynthOscillator *osc, uint32_t fre
 void synth_voice_init(SynthState *synth, int voice, SynthVoiceCfg *cfg);
 
 int16_t oscillator_step_output(SynthOscillator *osc, uint32_t increment);
-void synth_gen_samples(SynthState *synth, size_t gen_count);
+size_t synth_gen_samples(SynthState *synth, size_t gen_count);
 
 void synth_instrument_init(SynthState *synth, int instrument, SynthVoiceCfg *cfg);
 SynthVoice *synth_add_voice(SynthState *synth, uint8_t key, int instrument);

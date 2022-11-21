@@ -81,7 +81,15 @@
 
 
 #define AUDIO_SAMPLE_RATE       16000
-#define USE_HAL_I2S     // FIXME: Convert I2S/DMA to LL API
+#if USE_AUDIO
+#  if defined BOARD_STM32F429I_DISC1
+#    define USE_AUDIO_DAC
+#  else
+#    define USE_AUDIO_I2S
+#    define USE_HAL_I2S     // FIXME: Convert I2S/DMA to LL API
+#  endif
+#endif
+#define AUDIO_DMA_BUF_SAMPLES   256
 
 // ******************** App properties ********************
 

@@ -34,6 +34,7 @@
 
 #if defined PLATFORM_EMBEDDED && USE_AUDIO
 #  include "audio_synth.h"
+#  include "sample_device.h"
 //#  include "i2s.h"
 #endif
 
@@ -90,36 +91,18 @@ void app_tasks_init(void) {
 #if USE_AUDIO
 
 extern SynthState g_audio_synth;
+extern SampleDevice *g_dev_audio;
+#  ifdef USE_HAL_I2S
 extern DMA_HandleTypeDef g_dma;
 extern I2S_HandleTypeDef g_i2s;
-
-#define I2S_DMA_BUF_SAMPLES   256
-_Alignas(int32_t)
-int16_t g_audio_buf[I2S_DMA_BUF_SAMPLES*2];
-
-static TaskHandle_t s_audio_synth_task;
-
-static void fill_dma_buffer(int16_t *buf, size_t refill_count) {
-  synth_gen_samples(&g_audio_synth, refill_count);
-
-  int16_t *samples;
-  size_t sample_count = iqueue_peek__int16_t(g_audio_synth.queue, &samples);
-
-  if(sample_count < refill_count) // Not good
-    refill_count = sample_count;  // We'll just leave previous garbage in buffer
-  sample_count = refill_count;
-
-  int16_t *buf_pos = buf;
-  while(sample_count) {
-    *buf_pos++ = *samples;
-    *buf_pos++ = *samples++;
-    sample_count--;
-  }
-
-  iqueue_discard__int16_t(g_audio_synth.queue, refill_count);
-}
+#  endif
 
 
+TaskHandle_t g_audio_synth_task;
+
+
+
+#  ifdef USE_HAL_I2S
 static BaseType_t high_prio_task;
 
 void HAL_I2S_TxHalfCpltCallback(I2S_HandleTypeDef *hi2s) {
@@ -127,7 +110,7 @@ void HAL_I2S_TxHalfCpltCallback(I2S_HandleTypeDef *hi2s) {
 
   // Fill low half of DMA buffer
   g_audio_synth.next_buf = &g_audio_buf[0];
-  vTaskNotifyGiveFromISR(s_audio_synth_task, &high_prio_task);
+  vTaskNotifyGiveFromISR(g_audio_synth_task, &high_prio_task);
   // FIXME: Need to call portYIELD_FROM_ISR(high_prio_task);
 }
 
@@ -137,28 +120,29 @@ void HAL_I2S_TxCpltCallback(I2S_HandleTypeDef *hi2s) {
 
   // Fill high half of DMA buffer
   g_audio_synth.next_buf = &g_audio_buf[COUNT_OF(g_audio_buf) / 2];
-  vTaskNotifyGiveFromISR(s_audio_synth_task, &high_prio_task);
+  vTaskNotifyGiveFromISR(g_audio_synth_task, &high_prio_task);
   // FIXME: Need to call portYIELD_FROM_ISR(high_prio_task);
 }
-
+#  endif
 
 static void audio_synth_task(void *ctx) {
   while(1) {
     // Woken by notification from DMA ISR callbacks
     ulTaskNotifyTake(/*xClearCountOnExit*/ pdTRUE, portMAX_DELAY);
-    fill_dma_buffer(g_audio_synth.next_buf, I2S_DMA_BUF_SAMPLES / 2);
+    sdev_sample_out(g_dev_audio, g_audio_synth.next_buf, 0); // FIXME: remove 0 arg
   }
 }
 
 
 
 void audio_tasks_init(void) {
+#ifdef USE_AUDIO_I2S
   __HAL_RCC_DMA1_CLK_ENABLE();
 
   HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
 
-#ifdef USE_HAL_I2S
+#  ifdef USE_HAL_I2S
   if(HAL_DMA_Init(&g_dma) != HAL_OK) {
     DPUTS("DMA init error");
   }
@@ -170,7 +154,8 @@ void audio_tasks_init(void) {
   HAL_I2S_DMAPause(&g_i2s);
 //  gpio_highz_off(&g_i2s_sd_mode, false); // Shutdown mode on
 
-#else
+#  else // LL I2S
+/*
   LL_DMA_InitTypeDef dma_cfg = {
     .PeriphOrM2MSrcAddress  = (uint32_t)&SPI2->DR,
     .MemoryOrM2MDstAddress  = (uint32_t)g_audio_buf,
@@ -194,11 +179,13 @@ void audio_tasks_init(void) {
   LL_DMA_EnableStream(DMA1, LL_DMA_STREAM_4);
 
   LL_SPI_EnableDMAReq_TX(SPI2);
+*/
+#  endif
 #endif
 
 
   xTaskCreate(audio_synth_task, "synth", STACK_BYTES(1024*3),
-              NULL, TASK_PRIO_LOW, &s_audio_synth_task);
+              NULL, TASK_PRIO_HIGH, &g_audio_synth_task);
 }
 
-#endif
+#endif // USE_AUDIO

@@ -9,6 +9,7 @@
 #include "cstone/iqueue_int16_t.h"
 #include "audio_synth.h"
 #include "util/random.h"
+#include "util/intmath.h"
 
 
 static RandomState s_audio_prng;
@@ -175,6 +176,11 @@ void synth_init(SynthState *synth, uint32_t sample_rate, size_t queue_size) {
   for(int i = 0; i < SYNTH_MAX_KEYS; i++) {
     synth->key_voices[i] = -1;
   }
+}
+
+
+void synth_set_marker(SynthState *synth, bool enable) {
+  synth->marker = enable;
 }
 
 
@@ -368,17 +374,32 @@ int16_t oscillator_step_output(SynthOscillator *osc, uint32_t increment) {
 }
 
 
+static inline bool oscillator__zero_cross_rise(SynthOscillator *osc) {
+  return osc->quadrant == 0 && osc->prev_quadrant == 3;
+}
+
+
+static inline bool oscillator__zero_cross_fall(SynthOscillator *osc) {
+  return osc->quadrant == 2 && osc->prev_quadrant == 1;
+}
+
+
 static inline bool voice_is_active(SynthVoice *vox) {
   return vox->adsr.state != ADSR_IDLE;
 }
 
 
-static int32_t voice__step_output(SynthVoice *vox, uint32_t sample_rate) {
+static int32_t voice__step_output(SynthVoice *vox, uint32_t sample_rate, bool *update_marker) {
+  bool lfo_active = vox->modulate_freq > 0 || vox->modulate_amp > 0;
+
   int32_t lfo_sample = oscillator_step_output(&vox->lfo, 0);
 
   uint32_t osc_increment = 0;
 
+
   if(vox->modulate_freq > 0) {
+    if(oscillator__zero_cross_rise(&vox->lfo))
+      *update_marker = true;
 #if 0
 
     uint32_t min_freq = vox->osc.frequency - vox->modulate_freq;
@@ -395,6 +416,10 @@ static int32_t voice__step_output(SynthVoice *vox, uint32_t sample_rate) {
 
   int32_t osc_sample = oscillator_step_output(&vox->osc, osc_increment);
 
+  // Generate marker from voice oscillator if LFO is inactive
+  if(!lfo_active && oscillator__zero_cross_rise(&vox->osc))
+    *update_marker = true;
+
 
   // Apply envelope
   int32_t osc_w_env = (osc_sample * (int32_t)vox->adsr.output) >> 15;
@@ -409,6 +434,8 @@ static int32_t voice__step_output(SynthVoice *vox, uint32_t sample_rate) {
 
   // Apply VCA modulation
   if(vox->modulate_amp > 0) {
+    if(vox->modulate_freq == 0 && oscillator__zero_cross_rise(&vox->lfo))
+      *update_marker = true;
 
 #if 0
     static int pcount = 0;
@@ -449,10 +476,37 @@ static int32_t compress_audio(int32_t sample, int16_t threshold) {
 }
 
 
-void synth_gen_samples(SynthState *synth, size_t gen_count) {
+size_t synth_gen_samples(SynthState *synth, size_t gen_count) {
   size_t q_count = iqueue_count__int16_t(synth->queue);
   if(q_count >= gen_count)  // Nothing to do
-    return;
+    return q_count;
+
+  // We don't need to keep generating samples when no voices are active
+  int active_voices = 0;
+  int release_voices = 0;
+  for(int voice = 0; voice < SYNTH_MAX_VOICES; voice++) {
+    SynthADSR *adsr = &synth->voices[voice].adsr;
+
+    if(adsr->state == ADSR_RELEASE)
+      release_voices++;
+    else if(adsr->state != ADSR_IDLE || adsr->drone_on || adsr->gate)
+      active_voices++;
+  }
+
+  if(active_voices == 0) {
+    if(release_voices == 0)
+      synth->voice_state = VOICES_IDLE;
+    else
+      synth->voice_state = VOICES_RELEASE;
+  } else {
+    synth->voice_state = VOICES_ACTIVE;
+  }
+
+  if(synth->voice_state == VOICES_IDLE) { // Let queue drain remaining samples
+    DPRINT("0 voices, q_count: %u", (unsigned)q_count);
+    return q_count;
+  }
+
 
   gen_count -= q_count;
   int32_t mixed_samples;
@@ -469,27 +523,40 @@ void synth_gen_samples(SynthState *synth, size_t gen_count) {
         adsr_step_output(adsr, synth->timestamp);
 
         if(adsr->state == ADSR_IDLE && prev_state != ADSR_IDLE) {
-          DPRINT("ADSR end: voice=%d\n", voice);
+          DPRINT("ADSR end: voice=%d", voice);
         }
       }
     }
 
     // Generate samples for all active voices
     mixed_samples = 0;
+    bool first_voice = true;
+    bool apply_marker = false;
     for(int voice = 0; voice < SYNTH_MAX_VOICES; voice++) {
       SynthVoice *vox = &synth->voices[voice];
       if(!voice_is_active(vox)) continue;
 
-      int32_t osc_sample = voice__step_output(vox, synth->sample_rate);
+      bool update_marker = false;
+      int32_t osc_sample = voice__step_output(vox, synth->sample_rate, &update_marker);
       mixed_samples += osc_sample;
+
+      if(synth->marker && first_voice) {
+        if(update_marker)
+          apply_marker = true;
+        first_voice = false;
+      }
     }
 
-    mixed_samples = (mixed_samples * synth->attenuation) >> 15;
+    if(!apply_marker) {
+      mixed_samples = (mixed_samples * synth->attenuation) >> 15;
 
-    mixed_samples = compress_audio(mixed_samples, synth->attenuation);
-    mixed_samples = compress_audio(mixed_samples, INT16_MAX-5000);
-    mixed_samples = compress_audio(mixed_samples, INT16_MAX-2500);
-    sample = saturate16(mixed_samples);
+      mixed_samples = compress_audio(mixed_samples, synth->attenuation);
+      mixed_samples = compress_audio(mixed_samples, INT16_MAX-5000);
+      mixed_samples = compress_audio(mixed_samples, INT16_MAX-2500);
+      sample = saturate16(mixed_samples);
+    } else {
+      sample = INT16_MIN;
+    }
 
     if(iqueue_push_one__int16_t(synth->queue, &sample) < 1) // Full queue
       break;
@@ -501,6 +568,8 @@ void synth_gen_samples(SynthState *synth, size_t gen_count) {
       synth->sample_count = 0;
     }
   }
+
+  return iqueue_count__int16_t(synth->queue);
 }
 
 
@@ -557,6 +626,7 @@ static SynthVoice *synth__find_voice(SynthState *synth, uint8_t key, uint8_t ins
 
 
 void synth_press_key(SynthState *synth, uint8_t key, int instrument) {
+  DPRINT("PRESS: %d %d", key, instrument);
   // Check if voice is already playing
   SynthVoice *vox = synth__find_voice(synth, key, instrument);
 
@@ -567,6 +637,7 @@ void synth_press_key(SynthState *synth, uint8_t key, int instrument) {
 }
 
 void synth_release_key(SynthState *synth, uint8_t key) {
+  DPRINT("RELEASE: %d", key);
   int8_t vi = synth->key_voices[key];
   if(vi < 0)
     return;
@@ -718,6 +789,65 @@ static int16_t log_response(int16_t input) {
 }
 
 
+static int16_t spline_response(uint16_t x, int16_t weight) {
+  static Point16 p0 = {0,0};
+  static Point16 p2 = {INT16_MAX,INT16_MAX};
+/*
+  Quadratic spline with weight parameter:
+
+       W = -1               W = 0               W = 1
+
+   1|       [] p2        |       [] p2     p1 []   .--[] p2
+    |       /            |      /             |  .'
+    |      /             |   [] p1            | / 
+    |   _.'              |  /                 |/ 
+p0 0[]--____[]__ p1   p0 []__________      p0 []__________
+    0        1
+*/
+
+
+  // Quadratic solver suffers precision loss when weight is too close to 0.
+  // We just force it to 0 to use the linear special case.
+#define WEIGHT_LIMIT  (INT16_MAX / 500)
+  if(weight < WEIGHT_LIMIT && weight > -WEIGHT_LIMIT)
+    weight = 0;
+
+  if(weight == 0) // Linear response: y (Q1.15) == x (Q0.16)
+    return x >> 1;
+
+  int16_t weight01 = weight/2 + INT16_MAX/2;  // Rescale [-1,1) to [0,1)
+  if(weight01 < 0)  weight01 = 0;
+  Point16 p1 = {INT16_MAX-weight01, weight01};
+
+  // Find Bezier t-parameter for the current x
+  // FIXME: Profile difference between using bezier_search_t() and bezier_solve_t()
+  //uint16_t t = bezier_search_t(p0,p1,p2, x >> 1);
+  uint16_t t = bezier_solve_t(p0.x,p1.x,p2.x, x >> 1);
+  
+  // Use Bezier t-parameter (not time) to compute y for the current x (time)
+  int16_t y = quadratic_eval(p0.y, p1.y, p2.y, t);
+
+
+  // Pure quadratic Bezier doesn't afford for deep curvature.
+  // We add extra Y scaling using the original weight factor to
+  // pull the curve down or up more at the -1, +1 extremes.
+
+  // W > 0  --> scale = W*t
+  int32_t scale_y = ((int32_t)weight * (int32_t)(t>>1)) >> 15;
+
+  if(weight < 0) { // Remap Y values to be lower    
+    // scale = (W+1) - W*t
+    // y' = y * scale;
+    scale_y = ((int32_t)weight + INT16_MAX) - scale_y;
+    y = (scale_y * (int32_t)y) >> 15;
+  } else {  // Remap Y values to be higher
+    // y' = 1 - (1-y)*(1-scale)
+    y = INT16_MAX - ((((int32_t)INT16_MAX - y) * ((int32_t)INT16_MAX - scale_y)) >> 15);
+  }
+
+  return y;
+}
+
 
 int16_t adsr_step_output(SynthADSR *adsr, uint32_t now) {
   int32_t envelope = adsr->output;
@@ -799,23 +929,31 @@ int16_t adsr_step_output(SynthADSR *adsr, uint32_t now) {
 
   }
 
-  if(next_state != adsr->state) {
+  if(next_state != adsr->state) { // New state
     adsr->state_start_time = now - (uint32_t)overtime;
     elapsed = overtime;
   }
 
 
+  uint16_t x;
+
   switch(next_state) {
   case ADSR_IDLE:     envelope = 0; break;
   case ADSR_ATTACK:
-    envelope = elapsed * (int32_t)INT16_MAX / (int32_t)adsr->cfg.attack;
+    x = (uint32_t)elapsed * (uint32_t)UINT16_MAX / (uint32_t)adsr->cfg.attack;
+    envelope = (int32_t)(x >> 1);
+    //envelope = elapsed * (int32_t)INT16_MAX / (int32_t)adsr->cfg.attack;
     break;
   case ADSR_DECAY:
-    envelope = (int32_t)INT16_MAX - (elapsed * (int32_t)(INT16_MAX - adsr->cfg.sustain) / (int32_t)adsr->cfg.decay);
+    x = UINT16_MAX - (uint16_t)((uint32_t)elapsed * (uint32_t)UINT16_MAX / (uint32_t)adsr->cfg.decay);
+    envelope = (((uint32_t)x * (uint32_t)(INT16_MAX - adsr->cfg.sustain)) >> 16) + adsr->cfg.sustain;
+    //envelope = (int32_t)INT16_MAX - (elapsed * (int32_t)(INT16_MAX - adsr->cfg.sustain) / (int32_t)adsr->cfg.decay);
     break;
   case ADSR_SUSTAIN:  envelope = adsr->cfg.sustain; break;
   case ADSR_RELEASE:
-    envelope = (int32_t)adsr->release_start_level - (elapsed * (int32_t)adsr->release_start_level / (int32_t)adsr->cfg.release);
+    x = UINT16_MAX - (uint16_t)((uint32_t)elapsed * (uint32_t)UINT16_MAX / (uint32_t)adsr->cfg.release);
+    envelope = ((uint32_t)x * (uint32_t)(adsr->release_start_level)) >> 16;
+    //envelope = (int32_t)adsr->release_start_level - (elapsed * (int32_t)adsr->release_start_level / (int32_t)adsr->cfg.release);
 //    if(envelope < 0)
 //      printf("## %" PRId32 "  (%" PRId32 " %d %d)\n", envelope, elapsed, adsr->cfg.sustain, adsr->cfg.release);
     break;
@@ -826,8 +964,6 @@ int16_t adsr_step_output(SynthADSR *adsr, uint32_t now) {
 
   adsr->state = next_state;
 
-//  int32_t lin_envelope = envelope;
-
   if(envelope > 0) {
     switch(adsr->cfg.curve) {
     case CURVE_ULAW:
@@ -836,19 +972,31 @@ int16_t adsr_step_output(SynthADSR *adsr, uint32_t now) {
     case CURVE_LOG:
       envelope = log_response(envelope);
       break;
+    case CURVE_SPLINE:
+      switch(next_state) {
+        case ADSR_ATTACK:
+          envelope = spline_response(x, adsr->cfg.spline_weight);
+          break;
+        case ADSR_DECAY:
+          envelope = spline_response(x, adsr->cfg.spline_weight);
+          envelope = (((uint32_t)envelope * (uint32_t)(INT16_MAX - adsr->cfg.sustain)) >> 15) + adsr->cfg.sustain;
+          break;
+        case ADSR_RELEASE:
+          envelope = spline_response(x, adsr->cfg.spline_weight);
+          envelope = ((uint32_t)envelope * (uint32_t)(adsr->release_start_level)) >> 15;
+          break;
+
+        default:
+          break;
+      }
+
+      break;
     case CURVE_LINEAR:
     default:
       break;
     }
   }
 
-#if 0
-  static int i = 0;
-  if(i++ >= 300) {
-    printf("Env: %" PRId32 " --> %" PRId32 "\n", lin_envelope, envelope);
-    i = 0;
-  }
-#endif
 
   adsr->output = envelope;
 
