@@ -7,8 +7,8 @@
 #define DAC_TIMER                   TIM6
 #define DAC_TIMER_CLK_ENABLE        __HAL_RCC_TIM6_CLK_ENABLE
 #define DAC_TIMER_IRQ               TIM6_DAC_IRQn
-
 #define DAC_TIMER_CLOCK_HZ          48000
+#define DAC_TRIG_SOURCE             LL_DAC_TRIG_EXT_TIM6_TRGO
 
 // Unsigned DAC has offset for mid-scale zero position
 #define DAC_SAMPLE_ZERO             0x8000

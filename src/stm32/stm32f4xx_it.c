@@ -31,10 +31,12 @@
 #include "cstone/rtc_device.h"
 #include "cstone/rtc_soft.h"
 #include "cstone/iqueue_int16_t.h"
-#include "audio_synth.h"
-#include "sample_device.h"
-#ifdef USE_AUDIO_DAC
-#  include "sample_device_dac.h"
+#ifdef USE_AUDIO
+#  include "audio_synth.h"
+#  include "sample_device.h"
+#  ifdef USE_AUDIO_DAC
+#    include "sample_device_dac.h"
+#  endif
 #endif
 
 #include "stm32/stm32f4xx_it.h"
@@ -237,55 +239,38 @@ void DMA1_Stream4_IRQHandler(void) {
 #  endif
 
 #  ifdef USE_AUDIO_DAC
-//extern GPIOPin g_dac_pin;
+
 void TIM6_DAC_IRQHandler(void);
 void TIM6_DAC_IRQHandler(void) {
+#if 0
   if(LL_TIM_IsActiveFlag_UPDATE(DAC_TIMER) && LL_TIM_IsEnabledIT_UPDATE(DAC_TIMER)) {
     LL_TIM_ClearFlag_UPDATE(DAC_TIMER);
-#if 0
-    //gpio_toggle(&g_dac_pin);
-    static uint32_t data = 0;
-
-    data = 3072 - data;
-    LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, data);
-    LL_DAC_TrigSWConversion(DAC1, LL_DAC_CHANNEL_1);
-#endif
   }
+#endif
 
-  if(LL_DAC_IsActiveFlag_DMAUDR1(DAC1) != 0) {  // Handle underrun
+  if(LL_DAC_IsActiveFlag_DMAUDR1(DAC1)) {  // Handle underrun
     LL_DAC_ClearFlag_DMAUDR1(DAC1);
   }
 }
 
 
-/**
-  * @brief  This function handles DMA1 interrupt request.
-  * @param  None
-  * @retval None
-  */
 
 extern SynthState g_audio_synth;
-extern int16_t *g_audio_buf_low;
-extern int16_t *g_audio_buf_high;
+extern SampleDevice *g_dev_audio;
 extern TaskHandle_t g_audio_synth_task;
 
 void DMA1_Stream5_IRQHandler(void);
 void DMA1_Stream5_IRQHandler(void) {
   BaseType_t high_prio_task;
 
-  /* Check whether DMA transfer error caused the DMA interruption */
-  if(LL_DMA_IsActiveFlag_TE5(DMA1) == 1) {
-    /* Clear flag DMA transfer error */
+  if(LL_DMA_IsActiveFlag_TE5(DMA1) == 1) {  // Handle transfer error
     LL_DMA_ClearFlag_TE5(DMA1);
-
-    /* Call interruption treatment function */
-    //DacDmaTransferError_Callback();
 
   } else if(LL_DMA_IsActiveFlag_HT5(DMA1)) {
     LL_DMA_ClearFlag_HT5(DMA1);
 
     // Fill low half of DMA buffer
-    g_audio_synth.next_buf = g_audio_buf_low;
+    g_audio_synth.next_buf = g_dev_audio->cfg.dma_buf_low;
     vTaskNotifyGiveFromISR(g_audio_synth_task, &high_prio_task);
     // FIXME: Need to call portYIELD_FROM_ISR(high_prio_task);
 
@@ -293,7 +278,7 @@ void DMA1_Stream5_IRQHandler(void) {
     LL_DMA_ClearFlag_TC5(DMA1);
 
     // Fill high half of DMA buffer
-    g_audio_synth.next_buf = g_audio_buf_high;
+    g_audio_synth.next_buf = g_dev_audio->cfg.dma_buf_high;
     vTaskNotifyGiveFromISR(g_audio_synth_task, &high_prio_task);
     // FIXME: Need to call portYIELD_FROM_ISR(high_prio_task);
 

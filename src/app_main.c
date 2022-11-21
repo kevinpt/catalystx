@@ -121,8 +121,11 @@ UMsgTarget  g_tgt_event_buttons;
 UMsgTarget  g_tgt_audio_ctl;
 SynthState  g_audio_synth;
 
-//SampleDeviceI2S s_dev_audio; // FIXME: Select with macro
+#  ifdef USE_AUDIO_I2S
+SampleDeviceI2S s_dev_audio;
+#  else // DAC
 SampleDeviceDAC s_dev_audio;
+#  endif
 SampleDevice *g_dev_audio = (SampleDevice *)&s_dev_audio;
 
 #  ifdef USE_AUDIO_I2S
@@ -132,9 +135,6 @@ SampleDevice *g_dev_audio = (SampleDevice *)&s_dev_audio;
 #  endif
 _Alignas(int32_t)
 int16_t g_audio_buf[AUDIO_DMA_BUF_SAMPLES * AUDIO_DMA_BUF_CHANNELS];
-
-int16_t *g_audio_buf_low = &g_audio_buf[0];
-int16_t *g_audio_buf_high = &g_audio_buf[COUNT_OF(g_audio_buf)/2];
 #endif
 
 
@@ -933,8 +933,8 @@ int main(void) {
   }
 
   SampleDeviceCfg dev_audio_cfg = {
-    .dma_buf_low = g_audio_buf_low,
-    .dma_buf_high = g_audio_buf_high,
+    .dma_buf_low = &g_audio_buf[0],
+    .dma_buf_high = &g_audio_buf[COUNT_OF(g_audio_buf)/2],
     .half_buf_samples = AUDIO_DMA_BUF_SAMPLES / 2,
     .channels = 1,
     .sample_out = i2s_synth_out,
@@ -946,8 +946,8 @@ int main(void) {
 
 #ifdef USE_AUDIO_DAC
   SampleDeviceCfg dev_audio_cfg = {
-    .dma_buf_low = g_audio_buf_low,
-    .dma_buf_high = g_audio_buf_high,
+    .dma_buf_low = &g_audio_buf[0],
+    .dma_buf_high = &g_audio_buf[COUNT_OF(g_audio_buf)/2],
     .half_buf_samples = AUDIO_DMA_BUF_SAMPLES / 2,
     .channels = 1,
     .DMA_periph = DMA1,

@@ -117,8 +117,6 @@ invocation of this function.
 }
 
 
-extern int16_t *g_audio_buf_low;
-
 static void sdev_enable_dac(SampleDevice *sdev, bool enable) {
   SampleDeviceDAC *dac = (SampleDeviceDAC *)sdev;
 
@@ -126,9 +124,6 @@ static void sdev_enable_dac(SampleDevice *sdev, bool enable) {
     if(!LL_DAC_IsDMAReqEnabled(dac->DAC_periph, dac->DAC_channel)) {
       // Fill buffer with new samples to reduce output delay
       dac_synth_out(sdev, sdev->cfg.dma_buf_low, sdev->cfg.half_buf_samples*2);
-
-      // Reset DMA to start of buffer
-      //LL_DMA_SetDataLength(dac->DMA_periph, dac->DMA_stream, 256);
     }
 
     LL_DMA_EnableStream(sdev->cfg.DMA_periph, sdev->cfg.DMA_stream);

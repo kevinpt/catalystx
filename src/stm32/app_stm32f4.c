@@ -255,10 +255,13 @@ static const uint16_t s_demo_dac_data[] = {
 #endif
 
 
-//extern int16_t *g_audio_buf;  // DMA transfer buffer
-//extern int16_t *g_audio_buf_low;
-
 void dac_hw_init(SampleDeviceDAC *sdev) {
+/*
+Setup hardware to enable DAC output on GPIO port pin. DAC samples are driven by a timer
+triggered DMA transfer from a circular buffer. DMA interrupts signal audio_synth_task()
+for new data after every half-buffer is consumed.
+*/
+
   // IO init
 
   __HAL_RCC_GPIOA_CLK_ENABLE();
@@ -278,9 +281,8 @@ void dac_hw_init(SampleDeviceDAC *sdev) {
   // Init buffer data to mid-scale
   int16_t *buf_pos = sdev->base.cfg.dma_buf_low;
   size_t buf_samples = sdev->base.cfg.half_buf_samples * 2;
-  while(buf_samples > 0) {
+  for(size_t i = 0; i < buf_samples; i++) {
     *buf_pos++ = DAC_SAMPLE_ZERO;
-    buf_samples--;
   }
 
 
@@ -303,17 +305,24 @@ void dac_hw_init(SampleDeviceDAC *sdev) {
   LL_TIM_SetTriggerOutput(DAC_TIMER, LL_TIM_TRGO_UPDATE);
   LL_TIM_EnableCounter(DAC_TIMER);
 
+  // Note: TIM6 IRQ shared with DAC so we enable for DAC usage only
   HAL_NVIC_SetPriority(DAC_TIMER_IRQ, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY, 0);
   NVIC_EnableIRQ(DAC_TIMER_IRQ);
-  
+
 
   // DMA setup
-  __HAL_RCC_DMA1_CLK_ENABLE();  // FIXME: Hardcode
-
   DMA_TypeDef *DMA_periph = sdev->base.cfg.DMA_periph;
   uint32_t DMA_stream = sdev->base.cfg.DMA_stream;
 
-  LL_DMA_SetChannelSelection(DMA_periph, DMA_stream, LL_DMA_CHANNEL_7); // FIXME: Hardcode
+
+  if(DMA_periph == DMA1)
+    __HAL_RCC_DMA1_CLK_ENABLE();
+  else
+    __HAL_RCC_DMA2_CLK_ENABLE();
+
+
+#define DAC_DMA_CHANNEL   LL_DMA_CHANNEL_7    // RM0090 Table 42   Same channel for DAC1 & 2
+  LL_DMA_SetChannelSelection(DMA_periph, DMA_stream, DAC_DMA_CHANNEL);
   LL_DMA_ConfigTransfer(DMA_periph,
                         DMA_stream,
                         LL_DMA_DIRECTION_MEMORY_TO_PERIPH |
@@ -332,38 +341,33 @@ void dac_hw_init(SampleDeviceDAC *sdev) {
                                                 LL_DAC_DMA_REG_DATA_12BITS_LEFT_ALIGNED),
                          LL_DMA_DIRECTION_MEMORY_TO_PERIPH);
   
-  LL_DMA_SetDataLength(DMA_periph, DMA_stream, AUDIO_DMA_BUF_SAMPLES);
-//  LL_DMA_EnableIT_TE(DMA1, LL_DMA_STREAM_5);
+  LL_DMA_SetDataLength(DMA_periph, DMA_stream, buf_samples);
   LL_DMA_EnableIT_HT(DMA_periph, DMA_stream);
   LL_DMA_EnableIT_TC(DMA_periph, DMA_stream);
   LL_DMA_EnableStream(DMA_periph, DMA_stream);
 
-  // FIXME: Hardcoded stream
-  HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY+1, 0);
-  NVIC_EnableIRQ(DMA1_Stream5_IRQn);
+  IRQn_Type dma_irq = stm32_dma_stream_irq(DMA_periph, DMA_stream);
+  HAL_NVIC_SetPriority(dma_irq, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY+1, 0);
+  NVIC_EnableIRQ(dma_irq);
 
 
   // DAC setup
   __HAL_RCC_DAC_CLK_ENABLE();
  
   LL_DAC_InitTypeDef dac_cfg = {
-    .TriggerSource      = LL_DAC_TRIG_EXT_TIM6_TRGO, //LL_DAC_TRIG_SOFTWARE,
+    .TriggerSource      = DAC_TRIG_SOURCE,
     .WaveAutoGeneration = LL_DAC_WAVE_AUTO_GENERATION_NONE,
-//    .WaveAutoGenerationConfig =,
     .OutputBuffer       = LL_DAC_OUTPUT_BUFFER_ENABLE
   };
 
   LL_DAC_Init(sdev->DAC_periph, sdev->DAC_channel, &dac_cfg);
+  LL_DAC_ConvertData12LeftAligned(sdev->DAC_periph, sdev->DAC_channel, DAC_SAMPLE_ZERO);
 
-  //LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, 0);
-  LL_DAC_ConvertData12LeftAligned(sdev->DAC_periph, sdev->DAC_channel, 0x8000);
-  
 //  LL_DAC_EnableDMAReq(DAC1, LL_DAC_CHANNEL_1);
   LL_DAC_EnableIT_DMAUDR1(sdev->DAC_periph);
   
   LL_DAC_Enable(sdev->DAC_periph, sdev->DAC_channel);
   LL_DAC_EnableTrigger(sdev->DAC_periph, sdev->DAC_channel);
-
 }
 
 
