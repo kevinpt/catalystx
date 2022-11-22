@@ -225,16 +225,47 @@ void SPI2_IRQHandler(void) {
   HAL_I2S_IRQHandler(&g_i2s);
 }*/
 
+extern SynthState g_audio_synth;
+extern SampleDevice *g_dev_audio;
+extern TaskHandle_t g_audio_synth_task;
+
+
 #  ifdef USE_AUDIO_I2S
 #    ifdef USE_HAL_I2S
 extern DMA_HandleTypeDef g_dma;
 
+// I2S DMA interrupt
 void DMA1_Stream4_IRQHandler(void);
 void DMA1_Stream4_IRQHandler(void) {
   HAL_DMA_IRQHandler(&g_dma);
 }
-#    else // DMA
+#    else // LL I2S
+// I2S DMA interrupt
+void DMA1_Stream4_IRQHandler(void);
+void DMA1_Stream4_IRQHandler(void) {
+  BaseType_t high_prio_task;
 
+  if(LL_DMA_IsActiveFlag_TE4(DMA1) == 1) {  // Handle transfer error
+    LL_DMA_ClearFlag_TE4(DMA1);
+
+  } else if(LL_DMA_IsActiveFlag_HT4(DMA1)) {
+    LL_DMA_ClearFlag_HT4(DMA1);
+
+    // Fill low half of DMA buffer
+    g_audio_synth.next_buf = g_dev_audio->cfg.dma_buf_low;
+    vTaskNotifyGiveFromISR(g_audio_synth_task, &high_prio_task);
+    // FIXME: Need to call portYIELD_FROM_ISR(high_prio_task);
+
+  } else if(LL_DMA_IsActiveFlag_TC4(DMA1)) {
+    LL_DMA_ClearFlag_TC4(DMA1);
+
+    // Fill high half of DMA buffer
+    g_audio_synth.next_buf = g_dev_audio->cfg.dma_buf_high;
+    vTaskNotifyGiveFromISR(g_audio_synth_task, &high_prio_task);
+    // FIXME: Need to call portYIELD_FROM_ISR(high_prio_task);
+
+  }
+}
 #    endif
 #  endif
 
@@ -255,10 +286,7 @@ void TIM6_DAC_IRQHandler(void) {
 
 
 
-extern SynthState g_audio_synth;
-extern SampleDevice *g_dev_audio;
-extern TaskHandle_t g_audio_synth_task;
-
+// DAC DMA interrupt
 void DMA1_Stream5_IRQHandler(void);
 void DMA1_Stream5_IRQHandler(void) {
   BaseType_t high_prio_task;

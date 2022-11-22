@@ -158,7 +158,7 @@ static RegLayout s_reg_RCC_PLLI2SCFGR = {
   .reg_bits = 32
 };
 
-#if 0
+#if 1
 static RegField s_reg_DMA_HISR_fields[] = {
   REG_BIT("TCIF7", 27),
   REG_BIT("HTIF7", 26),
@@ -300,6 +300,42 @@ static RegLayout s_reg_SPI_I2SPR = {
 };
 
 
+static RegField s_reg_SPI_CR2_fields[] = {
+  REG_BIT("TXEIE",    7),
+  REG_BIT("RXNEIE",   6),
+  REG_BIT("ERRIE",    5),
+  REG_BIT("FRF",      4),
+  REG_BIT("SSOE",     2),
+  REG_BIT("TXDMAEN",  1),
+  REG_BIT("RXDMAEN",  0),
+  REG_END
+};
+
+static RegLayout s_reg_SPI_CR2 = {
+  .name     = "SPI%d_CR2",
+  .fields   = s_reg_SPI_CR2_fields,
+  .reg_bits = 32
+};
+
+static RegField s_reg_SPI_SR_fields[] = {
+  REG_BIT("FRE",      8),
+  REG_BIT("BSY",      7),
+  REG_BIT("OVR",      6),
+  REG_BIT("MODF",     5),
+  REG_BIT("CRCERR",   4),
+  REG_BIT("UDR",      3),
+  REG_BIT("CHSIDE",   2),
+  REG_BIT("TXE",      1),
+  REG_BIT("RXNE",     0),
+  REG_END
+};
+
+static RegLayout s_reg_SPI_SR = {
+  .name     = "SPI%d_SR",
+  .fields   = s_reg_SPI_SR_fields,
+  .reg_bits = 32
+};
+
 static int32_t cmd_rcc(uint8_t argc, char *argv[], void *eval_ctx) {
 //  const USB_OTG_GlobalTypeDef *usb_glbl = USB_OTG_HS;
 //  const USB_OTG_DeviceTypeDef *usb_dev = DEVICE_BASE(1);
@@ -308,7 +344,7 @@ static int32_t cmd_rcc(uint8_t argc, char *argv[], void *eval_ctx) {
   dump_register(&s_reg_rcc_cfgr,        RCC->CFGR, 2, /*show_bitmap*/true);
   dump_register(&s_reg_RCC_PLLI2SCFGR,  RCC->PLLI2SCFGR, 2, /*show_bitmap*/true);
 
-#if 0
+#if 1
   dump_register(&s_reg_DMA_HISR,    DMA1->HISR , 2, /*show_bitmap*/true);
   dump_register(&s_reg_DMA_SxCR,    DMA1_Stream4->CR , 2, /*show_bitmap*/true);
   dump_register(&s_reg_DMA_SxNDTR,  DMA1_Stream4->NDTR , 2, /*show_bitmap*/true);
@@ -319,6 +355,8 @@ static int32_t cmd_rcc(uint8_t argc, char *argv[], void *eval_ctx) {
 
   dump_register(&s_reg_SPI_I2SCFGR, SPI2->I2SCFGR,  2, /*show_bitmap*/true);
   dump_register(&s_reg_SPI_I2SPR,   SPI2->I2SPR,    2, /*show_bitmap*/true);
+  dump_register(&s_reg_SPI_CR2,     SPI2->CR2,      2, /*show_bitmap*/true);
+  dump_register(&s_reg_SPI_SR,      SPI2->SR,       2, /*show_bitmap*/true);
   return 0;
 }
 #endif // PLATFORM_STM32F4

@@ -98,13 +98,14 @@
 #if defined PLATFORM_EMBEDDED && USE_AUDIO
 #  include "audio_synth.h"
 #  include "sample_device.h"
+#  include "stm32f4xx_ll_dma.h"
 
-#  include "i2s.h"
-#  include "sample_device_i2s.h"
-
+#  ifdef USE_AUDIO_I2S
+#    include "sample_device_i2s.h"
+#    include "i2s.h"
+#  endif
 #  ifdef USE_AUDIO_DAC
 #    include "stm32f4xx_ll_dac.h"
-#    include "stm32f4xx_ll_dma.h"
 #    include "sample_device_dac.h"
 #    include "dac.h"
 #  endif
@@ -941,6 +942,22 @@ int main(void) {
   };
 
   sdev_init_i2s(&s_dev_audio, &dev_audio_cfg, &g_audio_synth, &g_i2s);
+#else // LL I2S
+
+  SampleDeviceCfg dev_audio_cfg = {
+    .dma_buf_low = &g_audio_buf[0],
+    .dma_buf_high = &g_audio_buf[COUNT_OF(g_audio_buf)/2],
+    .half_buf_samples = AUDIO_DMA_BUF_SAMPLES / 2,
+    .channels = 1,
+    .DMA_periph = DMA1,
+    .DMA_stream = LL_DMA_STREAM_4,  // RM0090  Table 42   SPI2_TX stream
+
+    .sample_out = i2s_synth_out,
+  };
+
+  sdev_init_i2s(&s_dev_audio, &dev_audio_cfg, &g_audio_synth, SPI2);
+
+  i2s_hw_init(&s_dev_audio);
 #endif
 
 #ifdef USE_AUDIO_DAC
@@ -972,11 +989,11 @@ int main(void) {
     .lfo_kind = OSC_TRIANGLE,
 
     .adsr.attack  = 100,
-    .adsr.decay   = 100,
-    .adsr.sustain = 20000,
-    .adsr.release = 100,
+    .adsr.decay   = 500,
+    .adsr.sustain = 16000,
+    .adsr.release = 600,
     .adsr.curve   = CURVE_SPLINE,
-    .adsr.spline_weight = 0,
+    .adsr.spline_weight = INT16_MAX,
 
     .lpf_cutoff_freq  = 1000,
     .modulate_freq    = 0, //modulate_freq,

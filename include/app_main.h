@@ -86,7 +86,7 @@
 #    define USE_AUDIO_DAC
 #  else
 #    define USE_AUDIO_I2S
-#    define USE_HAL_I2S     // FIXME: Convert I2S/DMA to LL API
+//#    define USE_HAL_I2S     // FIXME: Convert I2S/DMA to LL API
 #  endif
 #endif
 #define AUDIO_DMA_BUF_SAMPLES   512

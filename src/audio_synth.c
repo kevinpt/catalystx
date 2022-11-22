@@ -965,6 +965,11 @@ int16_t adsr_step_output(SynthADSR *adsr, uint32_t now) {
   adsr->state = next_state;
 
   if(envelope > 0) {
+    // Force decay and release spline weight to always be negative
+    int16_t neg_weight = adsr->cfg.spline_weight;
+    if(neg_weight > 0)
+      neg_weight = -neg_weight;
+
     switch(adsr->cfg.curve) {
     case CURVE_ULAW:
       envelope = ulaw_response(envelope);
@@ -978,11 +983,11 @@ int16_t adsr_step_output(SynthADSR *adsr, uint32_t now) {
           envelope = spline_response(x, adsr->cfg.spline_weight);
           break;
         case ADSR_DECAY:
-          envelope = spline_response(x, adsr->cfg.spline_weight);
+          envelope = spline_response(x, neg_weight);
           envelope = (((uint32_t)envelope * (uint32_t)(INT16_MAX - adsr->cfg.sustain)) >> 15) + adsr->cfg.sustain;
           break;
         case ADSR_RELEASE:
-          envelope = spline_response(x, adsr->cfg.spline_weight);
+          envelope = spline_response(x, neg_weight);
           envelope = ((uint32_t)envelope * (uint32_t)(adsr->release_start_level)) >> 15;
           break;
 

@@ -137,12 +137,11 @@ static void audio_synth_task(void *ctx) {
 
 void audio_tasks_init(void) {
 #ifdef USE_AUDIO_I2S
+#  ifdef USE_HAL_I2S
   __HAL_RCC_DMA1_CLK_ENABLE();
-
   HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
 
-#  ifdef USE_HAL_I2S
   if(HAL_DMA_Init(&g_dma) != HAL_OK) {
     DPUTS("DMA init error");
   }
@@ -185,7 +184,7 @@ void audio_tasks_init(void) {
 #endif
 
 
-  xTaskCreate(audio_synth_task, "synth", STACK_BYTES(1024*3),
+  xTaskCreate(audio_synth_task, "synth", STACK_BYTES(1024*2),
               NULL, TASK_PRIO_HIGH, &g_audio_synth_task);
 }
 

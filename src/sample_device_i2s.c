@@ -6,10 +6,16 @@
 #include "lib_cfg/build_config.h"
 #include "lib_cfg/cstone_cfg_stm32.h"
 #include "build_info.h"
+#include "app_main.h" // FIXME: Remove
 #include "cstone/platform.h"
 #include "cstone/debug.h"
 
+#ifdef USE_HAL_I2S
 #include "stm32f4xx_hal.h"
+#else
+#include "stm32f4xx_ll_spi.h"
+#include "stm32f4xx_ll_dma.h"
+#endif
 
 #include "sample_device.h"
 #include "sample_device_i2s.h"
@@ -19,31 +25,6 @@
 
 
 
-#if 0
-unsigned i2s_synth_out(SampleDevice *sdev, int16_t *buf, unsigned buf_count) {
-  SynthState *audio_synth = (SynthState *)sdev->ctx;
-
-  synth_gen_samples(audio_synth, buf_count);
-
-  // FIXME: Handle split queue like DAC code
-  int16_t *samples;
-  size_t sample_count = iqueue_peek__int16_t(audio_synth->queue, &samples);
-
-  if(sample_count < buf_count) // Not good
-    buf_count = sample_count;  // We'll just leave previous garbage in buffer
-  sample_count = buf_count;
-
-  int16_t *buf_pos = buf;
-  while(sample_count) {
-    *buf_pos++ = *samples;
-    *buf_pos++ = *samples++;
-    sample_count--;
-  }
-
-  iqueue_discard__int16_t(audio_synth->queue, buf_count);
-  return buf_count;
-}
-#else
 unsigned i2s_synth_out(SampleDevice *sdev, int16_t *buf, unsigned buf_count) {
   SynthState *audio_synth = (SynthState *)sdev->ctx;
 
@@ -114,35 +95,25 @@ invocation of this function.
   }
 
 
-  if(read_total < buf_count) {
-    // FIXME: Replace with memset
+  if(read_total < buf_count) {  // Fill remainder of buffer with 0's
+#if 0
     while(read_total < buf_count) { // Fill remainder of buffer with 0's
       *buf_pos++ = 0;
       *buf_pos++ = 0;
       read_total++;
     }
-
-    // FIXME: Remove
-/*    buf_pos -= 4;
-    for(int i = 0; i < 4; i++) { // Fill remainder of buffer with 0's
-      *buf_pos++ = 0;
-    }*/
-/*
-    buf_pos = &buf[1];
-    for(int16_t i = 0; i < 32; i++) {
-      *buf_pos++ = (DAC_SAMPLE_ZERO / 4) + (i << 10);
-    }
-*/
-
+#else
+    memset(buf_pos, 0, (buf_count - read_total) * sizeof *buf);
+#endif
   }
 
   return read_total;
 }
 
-#endif
 
-//extern I2S_HandleTypeDef g_i2s;
 
+
+#ifdef USE_HAL_I2S
 static void sdev_enable_i2s(SampleDevice *sdev, bool enable) {
   SampleDeviceI2S *i2s = (SampleDeviceI2S *)sdev;
 
@@ -153,15 +124,13 @@ static void sdev_enable_i2s(SampleDevice *sdev, bool enable) {
 //      dac_synth_out(sdev, sdev->cfg.dma_buf_low, sdev->cfg.half_buf_samples*2);
 //    }
 
-//    LL_DMA_EnableStream(sdev->cfg.DMA_periph, sdev->cfg.DMA_stream);
-//    LL_DAC_EnableDMAReq(dac->DAC_periph, dac->DAC_channel);
     HAL_I2S_DMAResume(i2s->hi2s);
   } else {
-//    LL_DAC_DisableDMAReq(dac->DAC_periph, dac->DAC_channel);
-//    LL_DMA_DisableStream(sdev->cfg.DMA_periph, sdev->cfg.DMA_stream);
     HAL_I2S_DMAPause(i2s->hi2s);
   }
 }
+
+
 
 void sdev_init_i2s(SampleDeviceI2S *sdev, SampleDeviceCfg *cfg, void *ctx, I2S_HandleTypeDef *hi2s) {
   memset(sdev, 0, sizeof *sdev);
@@ -169,4 +138,32 @@ void sdev_init_i2s(SampleDeviceI2S *sdev, SampleDeviceCfg *cfg, void *ctx, I2S_H
   sdev->base.cfg.enable = sdev_enable_i2s;
   sdev->hi2s = hi2s;
 }
+#else
+
+static void sdev_enable_i2s(SampleDevice *sdev, bool enable) {
+  SampleDeviceI2S *i2s = (SampleDeviceI2S *)sdev;
+
+  if(enable) {
+    if(!LL_I2S_IsEnabledDMAReq_TX(i2s->SPI_periph)) {
+      // Fill buffer with new samples to reduce output delay
+      i2s_synth_out(sdev, sdev->cfg.dma_buf_low, sdev->cfg.half_buf_samples*2);
+    }
+
+    LL_DMA_EnableStream(sdev->cfg.DMA_periph, sdev->cfg.DMA_stream);
+    LL_I2S_EnableDMAReq_TX(i2s->SPI_periph);
+  } else {
+
+    LL_I2S_DisableDMAReq_TX(i2s->SPI_periph);
+    LL_DMA_DisableStream(sdev->cfg.DMA_periph, sdev->cfg.DMA_stream);
+  }
+}
+
+
+void sdev_init_i2s(SampleDeviceI2S *sdev, SampleDeviceCfg *cfg, void *ctx, SPI_TypeDef *SPI_periph) {
+  memset(sdev, 0, sizeof *sdev);
+  sdev_init((SampleDevice *)sdev, cfg, ctx);
+  sdev->base.cfg.enable = sdev_enable_i2s;
+  sdev->SPI_periph = SPI_periph;
+}
+#endif
 

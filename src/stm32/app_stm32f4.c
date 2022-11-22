@@ -3,12 +3,14 @@
 
 #include "lib_cfg/build_config.h"
 #include "lib_cfg/cstone_cfg_stm32.h"
+#include "app_main.h"
 #include "stm32f4xx_hal.h"
 #include "stm32f4xx_ll_bus.h"
 #include "stm32f4xx_ll_gpio.h"
 #include "stm32f4xx_ll_rcc.h"
 #include "stm32f4xx_ll_tim.h"
 #include "stm32f4xx_ll_dac.h"
+#include "stm32f4xx_ll_spi.h"
 #include "stm32f4xx_ll_dma.h"
 
 #include "FreeRTOS.h"
@@ -16,13 +18,15 @@
 #include "cstone/io/uart.h"
 #include "cstone/io/usb.h"
 #include "cstone/core_stm32.h"
-#include "i2s.h"
 #include "sample_device.h"
 #ifdef USE_AUDIO_DAC
 #  include "sample_device_dac.h"
 #  include "dac.h"
 #endif
-#include "app_main.h"
+#ifdef USE_AUDIO_I2S
+#  include "sample_device_i2s.h"
+#  include "i2s.h"
+#endif
 #include "app_stm32.h"
 #include "app_gpio.h"
 
@@ -372,6 +376,155 @@ for new data after every half-buffer is consumed.
   LL_DAC_EnableTrigger(sdev->DAC_periph, sdev->DAC_channel);
 }
 #  endif // USE_AUDIO_DAC
+
+
+void i2s_hw_init(SampleDeviceI2S *sdev) {
+#ifndef USE_HAL_I2S
+/*
+Setup hardware to enable DAC output on GPIO port pin. DAC samples are driven by a timer
+triggered DMA transfer from a circular buffer. DMA interrupts signal audio_synth_task()
+for new data after every half-buffer is consumed.
+*/
+  // PLL setup for I2S clocking
+#if AUDIO_SAMPLE_RATE == 8000
+  RCC_PeriphCLKInitTypeDef i2s_clk_cfg = {
+    .PeriphClockSelection = RCC_PERIPHCLK_I2S,
+    .PLLI2S = { // PLLI2S VCO (Output from *N) must be between 100 and 432MHz
+      .PLLI2SN = 192, // From RM0090 Table 127
+      .PLLI2SR = 2
+    }
+  };
+#elif AUDIO_SAMPLE_RATE == 16000
+  // 16kHz I2S
+  RCC_PeriphCLKInitTypeDef i2s_clk_cfg = {
+    .PeriphClockSelection = RCC_PERIPHCLK_I2S,
+    .PLLI2S = { // PLLI2S VCO (Output from *N) must be between 100 and 432MHz
+      .PLLI2SN = 192, // From RM0090 Table 127
+      .PLLI2SR = 3
+    }
+  };
+#elif AUDIO_SAMPLE_RATE == 100
+RCC_PeriphCLKInitTypeDef i2s_clk_cfg = {
+    .PeriphClockSelection = RCC_PERIPHCLK_I2S,
+    .PLLI2S = { // PLLI2S VCO (Output from *N) must be between 100 and 432MHz
+      .PLLI2SN = 192, // From RM0090 Table 127
+      .PLLI2SR = 2
+    }
+  };
+#else
+#  error "Unsupported sample rate"
+#endif
+
+  // 8MHz / 8 * 192 / 2 = 96MHz
+  HAL_RCCEx_PeriphCLKConfig(&i2s_clk_cfg);
+  __HAL_RCC_I2S_CONFIG(RCC_I2SCLKSOURCE_PLLI2S);
+
+
+  // IO init
+
+  gpio_highz_on(&g_i2s_sd_mode);  // L/2+R/2
+//  gpio_highz_on(&g_i2s_gain);     // 9dB
+
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+
+
+  // SD (PC3 DISCO1)  (B15 Blackpill)
+  LL_GPIO_InitTypeDef gpio_cfg = {
+#ifdef BOARD_STM32F429I_DISC1
+    .Pin        = LL_GPIO_PIN_3,
+#else
+    .Pin        = LL_GPIO_PIN_15,
+#endif
+    .Mode       = LL_GPIO_MODE_ALTERNATE,
+    .Speed      = LL_GPIO_SPEED_FREQ_MEDIUM,
+    .OutputType = LL_GPIO_OUTPUT_PUSHPULL,
+    .Pull       = LL_GPIO_PULL_NO,
+    .Alternate  = LL_GPIO_AF_5  // Datasheet Table 12 p77
+  };
+#ifdef BOARD_STM32F429I_DISC1
+  LL_GPIO_Init(GPIOC, &gpio_cfg);
+#else
+  LL_GPIO_Init(GPIOB, &gpio_cfg);
+#endif
+
+  // WS (PB9)  CK (PB10)
+  gpio_cfg.Pin = LL_GPIO_PIN_9 | LL_GPIO_PIN_10;
+  LL_GPIO_Init(GPIOB, &gpio_cfg);
+
+
+  // Init buffer data to mid-scale
+  int16_t *buf_pos = sdev->base.cfg.dma_buf_low;
+  size_t buf_samples = sdev->base.cfg.half_buf_samples * 4;
+  for(size_t i = 0; i < buf_samples; i++) {
+    *buf_pos++ = 0; // FIXME: Change to memset
+  }
+
+
+  // DMA setup
+  DMA_TypeDef *DMA_periph = sdev->base.cfg.DMA_periph;
+  uint32_t DMA_stream = sdev->base.cfg.DMA_stream;
+
+
+  if(DMA_periph == DMA1)
+    __HAL_RCC_DMA1_CLK_ENABLE();
+  else
+    __HAL_RCC_DMA2_CLK_ENABLE();
+
+
+#define I2S2_DMA_CHANNEL   LL_DMA_CHANNEL_0    // RM0090 Table 42   S4_C0 = SPI2_TX
+  LL_DMA_SetChannelSelection(DMA_periph, DMA_stream, I2S2_DMA_CHANNEL);
+  LL_DMA_ConfigTransfer(DMA_periph,
+                        DMA_stream,
+                        LL_DMA_DIRECTION_MEMORY_TO_PERIPH |
+                        LL_DMA_MODE_CIRCULAR              |
+                        LL_DMA_PERIPH_NOINCREMENT         |
+                        LL_DMA_MEMORY_INCREMENT           |
+                        LL_DMA_PDATAALIGN_HALFWORD        |
+                        LL_DMA_MDATAALIGN_HALFWORD        |
+                        LL_DMA_PRIORITY_HIGH
+                        );
+
+  LL_DMA_ConfigAddresses(DMA_periph,
+                         DMA_stream,
+                         (uint32_t)sdev->base.cfg.dma_buf_low,
+                         LL_SPI_DMA_GetRegAddr(sdev->SPI_periph),
+                         LL_DMA_DIRECTION_MEMORY_TO_PERIPH);
+  
+  LL_DMA_SetDataLength(DMA_periph, DMA_stream, buf_samples);
+  LL_DMA_EnableIT_HT(DMA_periph, DMA_stream);
+  LL_DMA_EnableIT_TC(DMA_periph, DMA_stream);
+  LL_DMA_EnableStream(DMA_periph, DMA_stream);
+
+  IRQn_Type dma_irq = stm32_dma_stream_irq(DMA_periph, DMA_stream);
+  HAL_NVIC_SetPriority(dma_irq, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY+1, 0);
+  NVIC_EnableIRQ(dma_irq);
+
+  // I2S setup
+
+  __HAL_RCC_SPI2_CLK_ENABLE();
+
+  LL_I2S_InitTypeDef cfg = {
+    .Mode           = LL_I2S_MODE_MASTER_TX,
+    .Standard       = LL_I2S_STANDARD_PHILIPS,
+    .DataFormat     = LL_I2S_DATAFORMAT_16B,
+    .MCLKOutput     = LL_I2S_MCLK_OUTPUT_DISABLE,
+#  if AUDIO_SAMPLE_RATE == 8000
+    .AudioFreq      = LL_I2S_AUDIOFREQ_8K,
+#  elif AUDIO_SAMPLE_RATE == 16000
+    .AudioFreq      = LL_I2S_AUDIOFREQ_16K,
+#  else
+#    error "Unsupported sample rate"
+#  endif
+    .ClockPolarity  = LL_I2S_POLARITY_LOW
+  };
+
+  LL_I2S_Init(sdev->SPI_periph, &cfg);
+  LL_I2S_Enable(sdev->SPI_periph);
+  //LL_I2S_EnableDMAReq_TX(sdec->SPI_periph);
+#endif // USE_HAL_I2S
+}
+
 
 void i2s_io_init(void) {
 #if AUDIO_SAMPLE_RATE == 8000

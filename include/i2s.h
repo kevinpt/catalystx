@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 void i2s_io_init(void);
+void i2s_hw_init(SampleDeviceI2S *sdev);
 
 #ifdef __cplusplus
 }
