@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.20)
 
 
 project(elf_patch
-  VERSION 0.9.0
+  VERSION 0.9.1
   LANGUAGES C
 )
 
@@ -21,7 +21,9 @@ configure_file (
 
 #################### elf_patch ####################
 
-set(CSTONE_UTIL  "../libraries/cstone/src/util")
+set(CSTONE_DIR  "../../libraries/cstone")
+set(CSTONE_UTIL  "${CSTONE_DIR}/src/util")
+
 
 set(APP_SOURCE_COMMON
     src/elf_patch.c
@@ -38,8 +40,9 @@ add_executable(elf_patch  ${APP_SOURCE_COMMON})
 
 target_include_directories(elf_patch
   PUBLIC
-    "../libraries/cstone/include"
-    "../libraries/cstone/include/util"
+    ${CSTONE_DIR}/include
+    ${CSTONE_DIR}/include/util
+    ${CMAKE_BINARY_DIR}/src
 )
 
 target_link_libraries(elf_patch
