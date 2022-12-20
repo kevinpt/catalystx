@@ -1,0 +1,11 @@
+// Generated from build_config.h.in by Cmake
+
+#ifndef BUILD_CONFIG_H
+#define BUILD_CONFIG_H
+
+#define APP_VERSION         "@PROJECT_VERSION@"
+#define APP_VERSION_MAJOR   @PROJECT_VERSION_MAJOR@
+#define APP_VERSION_MINOR   @PROJECT_VERSION_MINOR@
+#define APP_VERSION_PATCH   @PROJECT_VERSION_PATCH@
+
+#endif // BUILD_CONFIG_H
