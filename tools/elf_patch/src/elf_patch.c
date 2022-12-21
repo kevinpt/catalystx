@@ -37,6 +37,7 @@ Catalyst codebase
 #include <stddef.h>
 
 #include <unistd.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <fcntl.h>
@@ -451,28 +452,59 @@ cleanup:
   return rval;
 }
 
+
+const struct option long_opts[] = {
+  {"input",   required_argument, NULL, 'i'},
+  {"output",  required_argument, NULL, 'o'},
+  {"binary",  required_argument, NULL, 'b'},
+  {"check",   no_argument, NULL, 'c'},
+  {"strip",   no_argument, NULL, 's'},
+  {"verbose", no_argument, NULL, 'v'},
+  {"version", no_argument, NULL, 'V'},
+  {"help",    no_argument, NULL, 'h'},
+  {0}
+};
+
+const char optstring[] = "b:i:o:csvVh";
+
+const OptionHelp opt_help[] = {
+  {"input",   "Input firmware image",       "ELF file", OPT_REQUIRED},
+  {"output",  "Output image",               "ELF file", 0},
+  {"binary",  "Binary firmware image",      "BIN file", 0},
+  {"check",   "Check only; No CRC update",  NULL, 0},
+  {"strip",   "Strip CRCs in output",       NULL, 0},
+  {"verbose", "Verbose output",             NULL, 0},
+  {"version", "Report version",             NULL, 0},
+  {"help",    "Show help",                  NULL, 0},
+  {0}
+};
+
+
+int terminal_columns(void) {
+  struct winsize w;
+  ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+  return w.ws_col;
+}
+
+
 void show_help(char *argv[]) {
   StringRange app_name;
   path_basename(argv[0], &app_name);
-  printf(A_BOLD "Usage: " A_NONE
-        "%"PRISR" -i <ELF file> [-o <ELF file>] [-b <BIN file>] [-c] [-s] [-v] [-V] [-h]\n",
-        RANGE_FMT(&app_name));
-  puts(" Add CRCs to an ELF firmware image");
-  puts("  -i <ELF file>   Input firmware image");
-  puts("  -o <ELF file>   Output image");
-  puts("  -b <BIN file>   Binary firmware image");
-  puts("  -c              Check ELF file only");
-  puts("  -s              Strip CRCs in output");
-  puts("  -v              Verbose output");
-  puts("  -V              Report version");
-  puts("  -h              Show help");
+
+  puts("Add CRCs to an ELF firmware image\n");
+
+  int max_columns = terminal_columns();
+
+  print_command_usage(app_name.start, optstring, long_opts, NULL, opt_help, max_columns);
 
   printf("\n" A_BOLD "Example:\n" A_NONE
          "  %"PRISR" -i firmware.elf                # Generate CRCs in firmware.elf\n",
           RANGE_FMT(&app_name));
   printf("  %"PRISR" -i firmware.elf -o fw_crc.elf  # Same with new image \n", RANGE_FMT(&app_name));
-  printf("  %"PRISR" -i firmware.elf -c -v          # Only check CRCs with detailed metadata\n", RANGE_FMT(&app_name));
+  printf("  %"PRISR" -i firmware.elf -c -v          # Only check CRCs with detailed metadata\n",
+          RANGE_FMT(&app_name));
 }
+
 
 int main(int argc, char *argv[]) {
   int status = 0;
@@ -495,7 +527,7 @@ int main(int argc, char *argv[]) {
   bool verbose = false;
   bool show_version = false;
 
-  while((c = getopt_r(argv, "b:i:o:csvVh", &state)) != -1) {
+  while((c=getopt_long_r(argv, optstring, long_opts, &state)) != -1) {
     switch(c) {
     case 'b': bin_file = state.optarg; break;
     case 'i': elf_file = state.optarg; break;
