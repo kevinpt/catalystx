@@ -52,9 +52,9 @@ Catalyst codebase
 #include "util/crc16.h"
 #include "util/crc32.h"
 #include "util/hex_dump.h"
+#include "util/term_color.h"
 
 #include "cstone/obj_metadata.h"
-#include "cstone/term_color.h"
 
 
 typedef struct {
