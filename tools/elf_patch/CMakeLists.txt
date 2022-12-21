@@ -1,12 +1,23 @@
 cmake_minimum_required(VERSION 3.20)
 
+# ACTIONS:
+#
+# Configure:
+#  cmake . -B build -DCMAKE_INSTALL_PREFIX=/usr/local
+#
+# Build:
+#  cmake --build build --target elf_patch
+#
+# Install:
+#  sudo cmake --build build --target install
+
 
 #################### Build config settings ####################
 
 
 
 project(elf_patch
-  VERSION 0.9.1
+  VERSION 1.0.0
   LANGUAGES C
 )
 
