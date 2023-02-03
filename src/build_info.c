@@ -1,4 +1,5 @@
-
+#include "lib_cfg/build_time.h"
 #include "build_info.h"
 
-const char g_build_date[] = __DATE__ "/" __TIME__;
+// Date/time string in ISO-8601 format from CMake
+const char g_build_time[] = APP_BUILD_TIME;

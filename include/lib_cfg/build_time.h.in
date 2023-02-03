@@ -1,0 +1,8 @@
+// Generated from build_time.h.in by Cmake
+
+#ifndef BUILD_TIME_H
+#define BUILD_TIME_H
+
+#define APP_BUILD_TIME      "@BUILD_TIME@"
+
+#endif // BUILD_TIME_H
