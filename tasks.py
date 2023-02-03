@@ -5,25 +5,25 @@ import subprocess
 #import pdb
 
 import invoke.vendor.yaml3 as yaml
-from invoke import task, Collection
+from invoke import task, Collection, Config
 from invoke.exceptions import Exit
 
 # Change to project root if we're in a subdirectory
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-# Load user specific configuration
-#ns = Collection.from_module(sys.modules[__name__])
 
 def init_user(ns):
   user_cfg_path = 'user.yaml'
   if os.path.isfile(user_cfg_path):
     with open(user_cfg_path) as fh:
       user_cfg = yaml.safe_load(fh)
-      print(user_cfg)
+#      print(user_cfg)
 #      pdb.set_trace()
       ns.configure(user_cfg)
+#      print(ns)
+#      t,c = ns.task_with_config('hello');
+#      print(type(c), c)
 
-#init_user(ns)
 
 
 def get_fixture(c):
@@ -293,4 +293,20 @@ quit
   cmd = f'screen -T VT100 {device} {baud}'
   os.execvp('screen', cmd.split())
 
+
+#@task
+#def hello(c):
+#  print('\n\n', type(c), c.Config)
+#  #c.set_runtime_path('user.yaml')
+#  #c.load_runtime()
+#  board = c.proj.board
+#  print(f'Hello: {board}')
+
+# Load user specific configuration
+#ns = Collection.from_module(sys.modules[__name__])
+#ns = Collection()
+#ns.add_task(hello)
+#init_user(ns)
+
+#print(Config.global_defaults())
 

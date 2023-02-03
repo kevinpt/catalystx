@@ -17,7 +17,7 @@ void sdev_init(SampleDevice *sdev, SampleDeviceCfg *cfg, void *ctx) {
 }
 
 
-unsigned sdev_sample_out(SampleDevice *sdev, int16_t *buf, unsigned buf_count) {
+unsigned sdev_sample_out(SampleDevice *sdev, int16_t *buf) {
   return sdev->cfg.sample_out(sdev, buf, sdev->cfg.half_buf_samples);
 }
 

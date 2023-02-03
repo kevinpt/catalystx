@@ -12,6 +12,8 @@ option(USE_MINIMAL_TASKS  "Reduce core task set to minimum" OFF)
 option(USE_FILESYSTEM     "Enable EVFS filesystem"          OFF)
 option(USE_AUDIO          "Enable Audio driver"             OFF)
 
+string(TIMESTAMP BUILD_TIME "%Y-%m-%dT%H:%M:%S")
+
 set(PLATFORM_HOSTED   OFF)
 set(PLATFORM_STM32    OFF)
 set(PLATFORM_STM32F1  OFF)
@@ -58,9 +60,20 @@ project(catalyst
   LANGUAGES C CXX ASM
 )
 
+execute_process(
+  COMMAND
+    git rev-parse --short=8 HEAD
+  OUTPUT_VARIABLE APP_GIT_SHA
+)
+
 configure_file (
   include/lib_cfg/build_config.h.in
   include/lib_cfg/build_config.h
+)
+
+configure_file (
+  include/lib_cfg/build_time.h.in
+  include/lib_cfg/build_time.h
 )
 
 
@@ -277,6 +290,14 @@ add_stm32_executable(catalyst
   SOURCE
     ${APP_SOURCE_COMMON}
     ${APP_SOURCE_BUILD_EMBEDDED}
+)
+
+# Force rebuild of build_info.c with updated APP_BUILD_TIME macro
+add_custom_command(
+  TARGET catalyst.elf
+  PRE_BUILD
+  COMMAND
+    rm -f ${CMAKE_BINARY_DIR}/include/lib_cfg/build_time.h
 )
 
 

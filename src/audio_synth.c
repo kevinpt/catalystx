@@ -72,8 +72,6 @@ static uint16_t octave_scale(int16_t n, int16_t scale) {
 
 
 // FIXME: Move to intmath.c
-#define LOG2_FP_EXP       15
-#define LOG2_TABLE_BITS   6
 
 /*
 
@@ -82,12 +80,15 @@ static uint16_t octave_scale(int16_t n, int16_t scale) {
 
   Returns the logarithm in Q16.15 format
 */
+#if 0
 static int32_t log2_fixed(uint32_t n, unsigned fp_exp) {
 #define clz(x)  __builtin_clz(x)
 
   //  Reference:
   //  https://stackoverflow.com/questions/54661131/log2-approximation-in-fixed-pointer
 
+#define LOG2_FP_EXP       15
+#define LOG2_TABLE_BITS   6
 
   // log2(1+n/64) * (2^15)
   static const uint16_t log2_table[] = {
@@ -126,7 +127,7 @@ static int32_t log2_fixed(uint32_t n, unsigned fp_exp) {
   // We have to add an offset (scaled to Q16.15) to compensate for the true binary point.
   return l2_int + ((uint32_t)(31u - fp_exp) << LOG2_FP_EXP);
 }
-
+#endif
 
 // Compute scale argument for :c:func:`octave_scale`
 // Result in Q0.15 format

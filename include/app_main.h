@@ -2,12 +2,17 @@
 #define APP_MAIN_H
 
 // ******************** Configuration settings ********************
+
+#define APP_NAME        "Catalyst"
+#define APP_NAME_SHORT  "CAT"
+
+
 #define USE_CONSOLE
 
 // Console settings
 #ifdef USE_CONSOLE
 #  ifdef PLATFORM_EMBEDDED
-#    define CONSOLE_TX_QUEUE_SIZE   512
+#    define CONSOLE_TX_QUEUE_SIZE   (512 + 1024)
 #  else
 // TX queue mostly not used on hosted build. Just keep a vestigial buffer for stdio console.
 #    define CONSOLE_TX_QUEUE_SIZE   32

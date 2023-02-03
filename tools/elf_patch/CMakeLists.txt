@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.20)
 #  cmake . -B build -DCMAKE_INSTALL_PREFIX=/usr/local
 #
 # Build:
-#  cmake --build build --target elf_patch
+#  cmake --build build --target elf-patch
 #
 # Install:
 #  sudo cmake --build build --target install
@@ -30,7 +30,7 @@ configure_file (
 #################### BUILD TARGETS ####################
 ####################               ####################
 
-#################### elf_patch ####################
+#################### elf-patch ####################
 
 set(CSTONE_DIR  "../../libraries/cstone")
 set(CSTONE_UTIL  "${CSTONE_DIR}/src/util")
@@ -47,16 +47,16 @@ set(APP_SOURCE_COMMON
     ${CSTONE_UTIL}/hex_dump.c
 )
 
-add_executable(elf_patch  ${APP_SOURCE_COMMON})
+add_executable(elf-patch  ${APP_SOURCE_COMMON})
 
-target_include_directories(elf_patch
+target_include_directories(elf-patch
   PUBLIC
     ${CSTONE_DIR}/include
     ${CSTONE_DIR}/include/util
     ${CMAKE_BINARY_DIR}/src
 )
 
-target_link_libraries(elf_patch
+target_link_libraries(elf-patch
   PRIVATE
     elf
 )
@@ -64,7 +64,7 @@ target_link_libraries(elf_patch
 
 #################### Installation ####################
 
-install(TARGETS elf_patch
+install(TARGETS elf-patch
   DESTINATION "bin"
 )
 

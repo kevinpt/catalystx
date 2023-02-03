@@ -254,7 +254,7 @@ void DMA1_Stream4_IRQHandler(void) {
     // Fill low half of DMA buffer
     g_audio_synth.next_buf = g_dev_audio->cfg.dma_buf_low;
     vTaskNotifyGiveFromISR(g_audio_synth_task, &high_prio_task);
-    // FIXME: Need to call portYIELD_FROM_ISR(high_prio_task);
+    portYIELD_FROM_ISR(high_prio_task);
 
   } else if(LL_DMA_IsActiveFlag_TC4(DMA1)) {
     LL_DMA_ClearFlag_TC4(DMA1);
@@ -262,8 +262,7 @@ void DMA1_Stream4_IRQHandler(void) {
     // Fill high half of DMA buffer
     g_audio_synth.next_buf = g_dev_audio->cfg.dma_buf_high;
     vTaskNotifyGiveFromISR(g_audio_synth_task, &high_prio_task);
-    // FIXME: Need to call portYIELD_FROM_ISR(high_prio_task);
-
+    portYIELD_FROM_ISR(high_prio_task);
   }
 }
 #    endif
@@ -316,6 +315,26 @@ void DMA1_Stream5_IRQHandler(void) {
 #  endif // USE_AUDIO_DAC
 #endif // USE_AUDIO
 
+#if 1
+extern SemaphoreHandle_t g_crc_dma_complete;
+
+// CRC DMA interrupt
+void DMA1_Stream7_IRQHandler(void);
+void DMA1_Stream7_IRQHandler(void) {
+  BaseType_t high_prio_task;
+
+  if(LL_DMA_IsActiveFlag_TC7(DMA1)) {
+    LL_DMA_ClearFlag_TC7(DMA1);
+
+    // Process next block
+
+    // All blocks done, signal calling task CRC is ready
+    //vTaskNotifyGiveFromISR(g_audio_synth_task, &high_prio_task);
+    xSemaphoreGiveFromISR(g_crc_dma_complete, &high_prio_task);
+    portYIELD_FROM_ISR(high_prio_task);
+  }
+}
+#endif  // USE_CRC_DMA
 
 extern RTCDevice g_rtc_soft_device;
 void TIM3_IRQHandler(void);

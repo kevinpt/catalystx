@@ -146,13 +146,19 @@ static void sdev_enable_i2s(SampleDevice *sdev, bool enable) {
   if(enable) {
     if(!LL_I2S_IsEnabledDMAReq_TX(i2s->SPI_periph)) {
       // Fill buffer with new samples to reduce output delay
+#if 1
       i2s_synth_out(sdev, sdev->cfg.dma_buf_low, sdev->cfg.half_buf_samples*2);
+#else
+      memset(sdev->cfg.dma_buf_low, 0, sdev->cfg.half_buf_samples * 4 * sizeof(int16_t));
+      //memset(sdev->cfg.dma_buf_low, 0, sdev->cfg.half_buf_samples * 2 * sizeof(int16_t));
+      //i2s_synth_out(sdev, sdev->cfg.dma_buf_high, sdev->cfg.half_buf_samples);
+#endif
     }
 
     LL_DMA_EnableStream(sdev->cfg.DMA_periph, sdev->cfg.DMA_stream);
     LL_I2S_EnableDMAReq_TX(i2s->SPI_periph);
-  } else {
 
+  } else {
     LL_I2S_DisableDMAReq_TX(i2s->SPI_periph);
     LL_DMA_DisableStream(sdev->cfg.DMA_periph, sdev->cfg.DMA_stream);
   }

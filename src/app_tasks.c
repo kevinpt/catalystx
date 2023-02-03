@@ -129,7 +129,7 @@ static void audio_synth_task(void *ctx) {
   while(1) {
     // Woken by notification from DMA ISR callbacks
     ulTaskNotifyTake(/*xClearCountOnExit*/ pdTRUE, portMAX_DELAY);
-    sdev_sample_out(g_dev_audio, g_audio_synth.next_buf, 0); // FIXME: remove 0 arg
+    sdev_sample_out(g_dev_audio, g_audio_synth.next_buf);
   }
 }
 

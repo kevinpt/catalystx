@@ -95,27 +95,6 @@ void path_basename(const char *path, StringRange *tail) {
 }
 
 
-void path_extname(const char *path, StringRange *ext) {
-  // Get the file name
-  path_basename(path, ext);
-  const char *pos = ext->end;
-
-  if(range_size(ext) > 0) {
-    // Scan back for first period
-    while(pos > ext->start) {
-      if(*pos == '.')
-        break;
-      pos--;
-    }
-  }
-
-  if(pos > ext->start) { // Extension found
-    ext->start = pos;
-  } else { // Return empty range
-    ext->start = ext->end;
-  }
-}
-
 
 bool file_exists(const char *path) {
   struct stat fs;
@@ -419,7 +398,7 @@ int generate_crcs(const char *elf_file, const char *bin_file, bool verbose, bool
 
   if(verbose) {
     puts("Metadata:");
-    dump_array((uint8_t *)obj_meta, meta_data->d_size);
+    dump_array_ex((uint8_t *)obj_meta, meta_data->d_size, /*show_ascii*/true, colorize);
   }
 
   // Report info from metadata
@@ -460,20 +439,22 @@ const struct option long_opts[] = {
   {"check",   no_argument, NULL, 'c'},
   {"strip",   no_argument, NULL, 's'},
   {"verbose", no_argument, NULL, 'v'},
+  {"no-color", no_argument, NULL, 0},
   {"version", no_argument, NULL, 'V'},
   {"help",    no_argument, NULL, 'h'},
   {0}
 };
 
-const char optstring[] = "b:i:o:csvVh";
+const char optstring[] = "b:i:o:csvVh"; // Short options
 
 const OptionHelp opt_help[] = {
-  {"input",   "Input firmware image",       "ELF file", OPT_REQUIRED},
-  {"output",  "Output image",               "ELF file", 0},
-  {"binary",  "Binary firmware image",      "BIN file", 0},
+  {"input",   "Input firmware image",       "<ELF file>", OPT_REQUIRED},
+  {"output",  "Output image",               "<ELF file>", 0},
+  {"binary",  "Binary firmware image",      "<BIN file>", 0},
   {"check",   "Check only; No CRC update",  NULL, 0},
   {"strip",   "Strip CRCs in output",       NULL, 0},
   {"verbose", "Verbose output",             NULL, 0},
+  {"no-color", "Disable color output",      NULL, 0},
   {"version", "Report version",             NULL, 0},
   {"help",    "Show help",                  NULL, 0},
   {0}
@@ -524,6 +505,7 @@ int main(int argc, char *argv[]) {
   const char *out_file = NULL;
   bool check_elf = false;
   bool strip_crc = false;
+  bool colorize = true;
   bool verbose = false;
   bool show_version = false;
 
@@ -542,14 +524,19 @@ int main(int argc, char *argv[]) {
       return 0;
       break;
 
+    case 0: // Long opts only
+      if(!strcmp(long_opts[state.long_index].name, "no-color"))
+        colorize = false;
+      break;
+
     default:
-    case ':':
-    case '?':
+    case ':': // Missing option arg
+    case '?': // Unknown option
       return ERR_BAD_ARG;
       break;
     }
   }
-  
+
   if(show_version) {
     printf("%s\n", APP_VERSION);
     return 0;
@@ -560,25 +547,6 @@ int main(int argc, char *argv[]) {
     return ERR_MISSING_INPUT;
   }
 
-#if 0
-  if(!bin_file) {
-    size_t buf_len = strlen(elf_file)+4+1;
-    bin_file_buf = malloc(buf_len);
-    if(!bin_file_buf)
-      return ERR_ALLOC;
-
-    // Replace .elf extension with .bin
-    strcpy(bin_file_buf, elf_file);
-
-    StringRange ext;
-    path_extname(bin_file_buf, &ext);
-    AppendRange bin_r;
-    range_init(&bin_r, (char *)ext.start, buf_len - (ext.start - bin_file_buf));
-    range_cat_str(&bin_r, ".bin");
-
-    bin_file = bin_file_buf;
-  }
-#endif
 
   if(out_file && strcmp(elf_file, out_file) != 0 && !check_elf) { // Copy input file
     if(!copy_file(elf_file, out_file))
@@ -600,12 +568,14 @@ int main(int argc, char *argv[]) {
   elf_version(EV_CURRENT);  // Prepare libelf
 
 
-  // Color output for TTYs only
-  bool colorize = isatty(1);
+  if(colorize) {
+    // Color output for TTYs only
+    bool colorize = isatty(fileno(stdout));
 
-  char *no_color = getenv("NO_COLOR");
-  if(no_color && no_color[0] != '\0')
-    colorize = false;
+    char *no_color = getenv("NO_COLOR");
+    if(no_color && no_color[0] != '\0')
+      colorize = false;
+  }
 
   status = generate_crcs(elf_file, bin_file, verbose, /*apply_update*/!check_elf, strip_crc, colorize);
 

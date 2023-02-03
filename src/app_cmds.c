@@ -7,10 +7,17 @@
 #ifdef PLATFORM_STM32F4
 #  include "stm32f4xx_hal.h"
 #endif
+#ifdef TEST_CRC
+#  include "stm32f4xx_ll_crc.h"
+#endif
 
 #include "FreeRTOS.h"
 #include "semphr.h"
 
+#include "cstone/debug.h"
+#include "cstone/profile.h"
+#include "cstone/obj_metadata.h"
+#include "cstone/crc32_stm32.h"
 #include "cstone/console.h"
 #include "cstone/dump_reg.h"
 //#include "cstone/umsg.h"
@@ -20,9 +27,14 @@
 #include "app_prop_id.h"
 
 
+#include "util/term_color.h"
 #include "util/getopt_r.h"
 #include "util/range_strings.h"
 #include "util/string_ops.h"
+#ifdef TEST_CRC
+#  include "util/crc16.h"
+#  include "util/crc32.h"
+#endif
 
 #include "cstone/iqueue_int16_t.h"
 #if USE_AUDIO
@@ -434,7 +446,140 @@ static int32_t cmd_audio(uint8_t argc, char *argv[], void *eval_ctx) {
 }
 #endif
 
+#ifdef TEST_CRC
+static void test_crc32(void) {
+  _Alignas(uint32_t)
+  //uint8_t data[] = {100,2,3,4,5,6,7,8};
+  //uint8_t data[] = {3,2,1,0};
+  uint8_t data[] = {0,1,2,3,4,5,6,7};
+//  uint8_t data[] = {4,3,2,100,2,8,7,6,5};
+
+  uint32_t crc = crc32_init();
+  for(size_t i = 0; i < sizeof data; i++) {
+    crc = crc32_update(crc, data[i]);
+  }
+  crc = crc32_finish(crc);
+
+  puts("CRC-32:");
+  printf("\tserial = 0x%08"PRIX32"\n", crc);
+
+  crc = crc32_init();
+  crc = crc32_update_small_stm32(crc, data, sizeof data);
+  crc = crc32_finish(crc);
+
+  printf("\tsmall  = 0x%08"PRIX32"\n", crc);
+
+
+  __HAL_RCC_CRC_CLK_ENABLE();
+  LL_CRC_ResetCRCCalculationUnit(CRC);
+  for(size_t i = 0; i < (sizeof data)/4; i++) {
+  //    uint32_t dswap = __builtin_bswap32(*(uint32_t*)&data[i << 2]);
+    uint32_t dswap = *(uint32_t*)&data[i << 2];
+    LL_CRC_FeedData32(CRC, dswap);
+  }
+  crc = LL_CRC_ReadData32(CRC);
+  printf("\thw     = 0x%08"PRIX32"\n", crc);
+
+  crc32_init_hw();
+  crc = crc32_update_hw(data, sizeof data);
+  printf("\thw2    = 0x%08"PRIX32"\n", crc);
+}
+
+
+
+
+static bool firmware_crc(const ObjMemRegion *regions, uint32_t *crc) {
+  *crc = 0;
+
+  uint32_t elf_crc;
+  uint32_t id;
+#if 1
+  crc32_init_hw();
+  crc32_dma_init();
+
+id = profile_add(0, "CRC32 DMA");
+profile_start(id);
+  for(int i = 0; i < OBJ_MAX_REGIONS; i++) {
+    const ObjMemRegion *cur = &regions[i];
+    if(cur->end - cur->start == 0) // No more regions
+      break;
+
+    uint8_t *block = cur->start;
+    size_t remain = cur->end - cur->start;
+    while(remain > 0) {
+      size_t processed = crc32_dma_process_block(block, remain);
+      crc32_dma_wait();
+      remain -= processed;
+      block += processed;
+    }
+  }
+profile_stop(id);
+  elf_crc = crc32_get_hw();
+  printf("## elf_crc (dma): 0x%08"PRIX32"\n", elf_crc);
+
+//#else
+  crc32_init_hw();
+
+id = profile_add(0, "CRC32 HW");
+profile_start(id);
+  for(int i = 0; i < OBJ_MAX_REGIONS; i++) {
+    const ObjMemRegion *cur = &regions[i];
+    if(cur->end - cur->start == 0) // No more regions
+      break;
+
+//    printf("## cur: %08X - %08X\n", cur->start, cur->end);
+    uint8_t *block = cur->start;
+    elf_crc = crc32_update_hw(block, cur->end - cur->start);
+//    printf("## elf_crc (hw): 0x%08X\n", elf_crc);
+  }
+profile_stop(id);
+
+profile_report_all();
+//profile_delete_all();
+
+  *crc = crc32_finish(elf_crc);
+#endif
+  return true;
+}
+
+
+extern const ObjectMetadata g_metadata;
+#define CHAR_PASS   A_BGRN u8"✓" A_NONE
+#define CHAR_FAIL   A_BRED u8"✗" A_NONE
+
+// FIXME: Replace
+static void XXvalidate_metadata(void) {
+  // Check firmware crc
+  uint32_t obj_crc;
+  firmware_crc(g_metadata.mem_regions, &obj_crc);
+
+  // Check metadata CRC
+#define FIELD_SIZE(t, f)  sizeof(((t *)0)->f)
+  uint16_t meta_crc = crc16_init();
+  // Skip over initial CRCs in metadata struct
+  size_t meta_offset = offsetof(ObjectMetadata, meta_crc) + FIELD_SIZE(ObjectMetadata, meta_crc);
+  meta_crc = crc16_update_block(meta_crc, (uint8_t *)&g_metadata + meta_offset,
+                                sizeof g_metadata - meta_offset);
+  meta_crc = crc16_finish(meta_crc);
+
+  printf("   App CRC: 0x%08"PRIX32" %s\n", obj_crc, obj_crc == g_metadata.obj_crc ? CHAR_PASS : CHAR_FAIL);
+  printf("  Meta CRC: 0x%04X %s\n", meta_crc, meta_crc == g_metadata.meta_crc ? CHAR_PASS : CHAR_FAIL);
+}
+
+
+static int32_t cmd_crc(uint8_t argc, char *argv[], void *eval_ctx) {
+  test_crc32();
+
+  XXvalidate_metadata();
+
+  return 0;
+}
+#endif // TEST_CRC
+
 const ConsoleCommandDef g_app_cmd_set[] = {
+#ifdef TEST_CRC
+  CMD_DEF("crc",      cmd_crc,   "Test CRC"),
+#endif
   CMD_DEF("demo",     cmd_demo,  "Demo app command"),
 #if USE_AUDIO
   CMD_DEF("audio",    cmd_audio,      "Sound control"),

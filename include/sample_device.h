@@ -44,7 +44,7 @@ extern "C" {
 #endif
 
 void sdev_init(SampleDevice *sdev, SampleDeviceCfg *cfg, void *ctx);
-unsigned sdev_sample_out(SampleDevice *sdev, int16_t *buf, unsigned buf_count);
+unsigned sdev_sample_out(SampleDevice *sdev, int16_t *buf);
 bool sdev_ctl(SampleDevice *sdev, int op, void *data, size_t data_len);
 
 #ifdef __cplusplus

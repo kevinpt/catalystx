@@ -29,15 +29,18 @@
 #    endif
 #    include "stm32f4xx_ll_tim.h"
 #  endif
+#  include "cstone/cycle_counter_cortex.h"
 #endif
 
 #include "FreeRTOS.h"
 #include "semphr.h"
 #include "queue.h"
+#include "cstone/obj_metadata.h"
 #include "cstone/rtos.h"
 #include "cstone/timing.h"
 #include "cstone/target.h"
 #include "cstone/debug.h"
+#include "cstone/profile.h"
 #include "cstone/faults.h"
 #include "cstone/led_blink.h"
 #include "cstone/umsg.h"
@@ -94,6 +97,7 @@
 
 #include "util/mempool.h"
 #include "util/random.h"
+#include "util/num_format.h"
 
 #if defined PLATFORM_EMBEDDED && USE_AUDIO
 #  include "audio_synth.h"
@@ -112,6 +116,44 @@
 #endif
 
 
+#if defined PLATFORM_EMBEDDED
+// Configure metadata section
+extern char _sivec, _eivec, _sflash1, _eflash1;
+#  ifdef BOARD_STM32F401_BLACK_PILL
+extern char _sflash0, _eflash0;
+#  endif
+
+static const TraitDescriptor s_app_traits[] = {
+  {1, 0, 42},
+  {2, 0, 43}
+};
+
+__attribute__(( section(".metadata"), used ))
+const ObjectMetadata g_metadata = {
+  .obj_crc      = 0, // Filled in by elf_patch utility
+  .meta_crc     = 0,
+  .meta_version = OBJ_METADATA_V1,
+  .obj_kind     = OBJ_KIND_APP,
+  .active_image = 1,
+#  ifndef NDEBUG  // CMake will def NDEBUG in all debug build types
+  .debug_build  = 1,
+#  endif
+
+#  define DEF_CRC_REGION(s, e)  {&(s), &(e)}
+  .mem_regions  = {
+    DEF_CRC_REGION(_sivec, _eivec),
+#  ifdef BOARD_STM32F401_BLACK_PILL
+    DEF_CRC_REGION(_sflash0, _eflash0), // Extra space between metadata and storage sectors
+#  endif
+    DEF_CRC_REGION(_sflash1, _eflash1)
+  },
+  .obj_version  = APP_VERSION_INT,
+  .git_sha      = APP_GIT_SHA,
+  .obj_name     = APP_NAME,
+  .trait_count  = COUNT_OF(s_app_traits),
+  .traits       = s_app_traits
+};
+#endif // PLATFORM_EMBEDDED
 
 PropDB      g_prop_db;
 LogDB       g_log_db;
@@ -198,8 +240,10 @@ DEF_PIN(g_button1,        GPIO_PORT_B, 8,   GPIO_PIN_INPUT);
 
 
 static const PropDefaultDef s_prop_defaults[] = {
-  P_UINT(P_DEBUG_SYS_LOCAL_VALUE,     0, 0),
-  P_UINT(P_APP_INFO_BUILD_VERSION,    APP_VERSION_INT, P_PERSIST),
+  P_UINT(P_DEBUG_SYS_LOCAL_VALUE,     0, 0),  // Debug mode setting
+  P_UINT(P_APP_INFO_BUILD_VERSION,    APP_VERSION_INT, P_PROTECT | P_PERSIST),
+  P_UINT(P_SYS_STORAGE_INFO_COUNT,    0, P_PROTECT | P_PERSIST),  // Flash write counter
+  P_UINT((P1_APP | P2_INFO | P3_INFO | P4_VALUE), 0, P_PERSIST), // Dummy persistable value for testing
 #if USE_AUDIO
   P_UINT(P_APP_AUDIO_INFO_VALUE, 0, 0),
   P_UINT(P_APP_AUDIO_INST0_FREQ,  440, 0),
@@ -303,7 +347,7 @@ bool get_led(uint8_t led_id) {
 #ifdef USE_CONSOLE
 // Console setup
 uint8_t show_prompt(void *eval_ctx) {
-  fputs(A_YLW u8"APP❱ " A_NONE, stdout);
+  fputs(A_YLW APP_NAME_SHORT u8"❱ " A_NONE, stdout);
   return 7; // Inform console driver of cursor position in line (0-based)
 }
 
@@ -323,7 +367,7 @@ static void stdio_init(void) {
 
 
 static void report_sys_name(void) {
-  puts(A_BWHT u8"\n✨ Catalyst ✨" A_NONE);
+  puts(A_BWHT u8"\n✨ "APP_NAME" ✨" A_NONE);
 #ifdef PLATFORM_HOSTED
   puts("** Hosted simulator **");
 #endif
@@ -541,7 +585,7 @@ static void platform_init(void) {
 
 
   // Configure RTC
-
+#ifdef PLATFORM_EMBEDDED
 #ifdef BOARD_STM32F401_BLACK_PILL
 #  define RTC_CLK_SOURCE  RTC_CLK_EXTERN_XTAL
 #else
@@ -569,10 +613,10 @@ static void platform_init(void) {
   LL_GPIO_Init(GPIOC, &gpio_cfg);
 #  endif
 #endif
-
+#endif // PLATFORM_EMBEDDED
 
 #ifdef PLATFORM_EMBEDDED
-  // NOTE: Switching RTC clock sources requires a power cycle
+  // NOTE: Switching RTC clock sources requires a power cycle on STM32
   rtc_stm32_init(&s_rtc_device, RTC_CLK_SOURCE, 32768);
   rtc_soft_init(&g_rtc_soft_device);
 
@@ -725,28 +769,7 @@ static void audio_ctl_handler(UMsgTarget *tgt, UMsg *msg) {
 
   switch(msg->id) {
   case P_APP_AUDIO_INFO_VALUE: // Enable/disable synth
-
     sdev_ctl(g_dev_audio, msg->payload ? SDEV_OP_ACTIVATE : SDEV_OP_DEACTIVATE, NULL, 0);
-/*#if 1*/
-/*#ifdef USE_AUDIO_I2S*/
-/*    if(msg->payload)*/
-/*      HAL_I2S_DMAResume(&g_i2s);*/
-/*    else*/
-/*      HAL_I2S_DMAPause(&g_i2s);*/
-/*#endif*/
-/*#ifdef USE_AUDIO_DAC*/
-/*    if(msg->payload)*/
-/*      LL_DAC_EnableDMAReq(DAC1, LL_DAC_CHANNEL_1); // FIXME: Get from device*/
-/*    else*/
-/*      LL_DAC_DisableDMAReq(DAC1, LL_DAC_CHANNEL_1);*/
-/*#endif*/
-/*#else*/
-/*    if(msg->payload)*/
-/*      gpio_highz_off(&g_i2s_sd_mode, true);  // Shutdown off L channel only*/
-/*      //gpio_highz_on(&g_i2s_sd_mode);  // Disable shutdown L/2+R/2*/
-/*    else*/
-/*      gpio_highz_off(&g_i2s_sd_mode, false);  // Activate shutdown*/
-/*#endif*/
     break;
 
   case P_APP_AUDIO_INST0_FREQ:
@@ -833,7 +856,19 @@ static void portable_init(void) {
   mp_add_histogram(&g_pool_set, pool_hist);
 #endif
 
+#ifdef PLATFORM_EMBEDDED
+  char si_buf[10];
+  to_si_value(SystemCoreClock, 0, si_buf, sizeof si_buf, /*frac_places*/1, SIF_SIMPLIFY);
+  printf("Core clock: %sHz\n", si_buf);
 
+//  cycle_counter_init();
+//  profile_init(cycle_count, SystemCoreClock, /*max_profiles*/0);
+
+  profile_init(perf_timer_count, perf_timer_freq(), /*max_profiles*/0);
+
+  // Validate firmware
+  // FIXME
+#endif
 
   // Load debug flags
   debug_init();
@@ -863,11 +898,11 @@ static void portable_init(void) {
   // This will be overwritten if the log has a seed property
   char seed_buf[32];
   snprintf(seed_buf, COUNT_OF(seed_buf), "%" PRIu32 "/%s/%s", random_from_system(),
-          g_build_date, APP_VERSION);
+          g_build_time, APP_VERSION);
   uint32_t seed = (uint32_t)random_seed_from_str(seed_buf);
-  DPRINT("SEED: '%s' --> %08lX", seed_buf, seed);
+  DPRINT("SEED: '%s' --> %08"PRIX32, seed_buf, seed);
   prop_set_uint(&g_prop_db, P_SYS_PRNG_LOCAL_VALUE, seed, 0);
-  prop_set_attributes(&g_prop_db, P_SYS_PRNG_LOCAL_VALUE, P_PERSIST);
+  prop_set_attributes(&g_prop_db, P_SYS_PRNG_LOCAL_VALUE, P_PROTECT | P_PERSIST);
 
 
   // Load properties from log DB
@@ -906,7 +941,9 @@ static void portable_init(void) {
 
 
 int main(void) {
+#ifdef PLATFORM_EMBEDDED
   sys_stack_fill();
+#endif
   platform_init();
   portable_init();
 
