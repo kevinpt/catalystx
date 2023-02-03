@@ -13,9 +13,14 @@ _reserved_stack_size = 4K;
 
 /* Physical memory regions */
 MEMORY {
-  ISR_VECTOR (rx)  : ORIGIN = 0x8000000,  LENGTH = 16K
-  STORAGE0 (rw) : ORIGIN = ORIGIN(ISR_VECTOR)+LENGTH(ISR_VECTOR), LENGTH = 48K
-  FLASH   (rx)  : ORIGIN = ORIGIN(STORAGE0)+LENGTH(STORAGE0), LENGTH = 2048K - LENGTH(ISR_VECTOR) - LENGTH(STORAGE0)
+  /* ISR Vector = ??? bytes */
+  ISR_VECTOR (rx) : ORIGIN = 0x8000000, LENGTH = 512
+  METADATA   (r)  : ORIGIN = ORIGIN(ISR_VECTOR) + LENGTH(ISR_VECTOR), LENGTH = 256
+  FLASH0     (rx) : ORIGIN = ORIGIN(METADATA) + LENGTH(METADATA),
+                    LENGTH = 16K - LENGTH(ISR_VECTOR) - LENGTH(METADATA)
+  STORAGE0   (rw) : ORIGIN = ORIGIN(FLASH0)+LENGTH(FLASH0), LENGTH = 48K  /* Sectors 1-3 */
+  FLASH1   (rx)  : ORIGIN = ORIGIN(STORAGE0)+LENGTH(STORAGE0),
+                  LENGTH = 2048K - LENGTH(ISR_VECTOR) - LENGTH(METADATA) - LENGTH(FLASH0) - LENGTH(STORAGE0)
   RAM     (xrw) : ORIGIN = 0x20000000, LENGTH = 192K
   CCMRAM  (rw)  : ORIGIN = 0x10000000, LENGTH = 64K
   SDRAM   (rw)  : ORIGIN = 0xD0000000, LENGTH = 8M
@@ -58,7 +63,7 @@ SECTIONS {
     KEEP(*(.fini))  /* Global destructors */
     . = ALIGN(4);
     _etext = .;     /* Mark end of code */
-  } >FLASH
+  } >FLASH1
 
   /* Readonly constant data */
   .rodata : {
@@ -66,26 +71,26 @@ SECTIONS {
     *(.rodata)
     *(.rodata*)
     . = ALIGN(4);
-  } >FLASH
+  } >FLASH1
 
   /* AAPCS table for stack unwinding, exception handling, etc. */
   .ARM.extab : {
     *(.ARM.extab* .gnu.linkonce.armextab.*)
-  } >FLASH
+  } >FLASH1
 
   /* Index into extab */
   .ARM : {
     __exidx_start = .;
     *(.ARM.exidx*)
     __exidx_end = .;
-  } >FLASH
+  } >FLASH1
 
   /* Table of functions called before .init_array */
   .preinit_array : {
     PROVIDE_HIDDEN(__preinit_array_start = .);
     KEEP(*(.preinit_array*))
     PROVIDE_HIDDEN(__preinit_array_end = .);
-  } >FLASH
+  } >FLASH1
 
   /* Table of functions in .init section */
   .init_array : {
@@ -93,7 +98,7 @@ SECTIONS {
     KEEP(*(SORT(.init_array.*)))
     KEEP(*(.init_array*))
     PROVIDE_HIDDEN(__init_array_end = .);
-  } >FLASH
+  } >FLASH1
 
   /* Table of functions in .fini section */
   .fini_array : {
@@ -101,7 +106,7 @@ SECTIONS {
     KEEP(*(SORT(.fini_array.*)))
     KEEP(*(.fini_array*))
     PROVIDE_HIDDEN(__fini_array_end = .);
-  } >FLASH
+  } >FLASH1
 
 
   /* ******************** RAM ******************** */
@@ -116,7 +121,7 @@ SECTIONS {
     *(.data*)
     . = ALIGN(4);
     _edata = .;     /* Mark end of initialized data*/
-  } >RAM AT> FLASH
+  } >RAM AT> FLASH1
 
 
   /* Uninitialized data, zeroed in startup */

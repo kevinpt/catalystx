@@ -127,6 +127,8 @@ function(add_stm32_executable EXEC_NAME)
   add_custom_command( OUTPUT ${EXEC_NAME}.bin
     COMMAND
       ${ARM_OBJCOPY} -O binary ${EXEC_NAME}.elf ${EXEC_NAME}.bin
+    COMMAND
+      elf_patch -i ${EXEC_NAME}.elf
     DEPENDS ${EXEC_NAME}.elf
   )
 

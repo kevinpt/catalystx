@@ -15,10 +15,12 @@ _reserved_stack_size = 1K;
 MEMORY {
   /* ISR Vector = 404 bytes */
   ISR_VECTOR (rx) : ORIGIN = 0x8000000, LENGTH = 512
-  FLASH0     (rx) : ORIGIN = ORIGIN(ISR_VECTOR) + LENGTH(ISR_VECTOR), LENGTH = 16K - LENGTH(ISR_VECTOR)
+  METADATA   (r)  : ORIGIN = ORIGIN(ISR_VECTOR) + LENGTH(ISR_VECTOR), LENGTH = 256
+  FLASH0     (rx) : ORIGIN = ORIGIN(METADATA) + LENGTH(METADATA),
+                    LENGTH = 16K - LENGTH(ISR_VECTOR) - LENGTH(METADATA)
   STORAGE0   (rw) : ORIGIN = ORIGIN(FLASH0)+LENGTH(FLASH0), LENGTH = 48K  /* Sectors 1-3 */
   FLASH1     (rx) : ORIGIN = ORIGIN(STORAGE0)+LENGTH(STORAGE0),
-                              LENGTH = 256K - LENGTH(ISR_VECTOR) - LENGTH(FLASH0) - LENGTH(STORAGE0)
+                    LENGTH = 256K - LENGTH(ISR_VECTOR) - LENGTH(METADATA) - LENGTH(FLASH0) - LENGTH(STORAGE0)
   RAM        (xrw) : ORIGIN = 0x20000000, LENGTH = 64K
 }
 
@@ -33,9 +35,28 @@ SECTIONS {
   /* Vector table goes first */
   .isr_vector : {
     . = ALIGN(4);
+    _sivec = .;
     KEEP(*(.isr_vector))
     . = ALIGN(4);
+    _eivec = .;
   } >ISR_VECTOR
+
+    /* Metadata at end of flash*/
+  /*
+  .metadata ORIGIN(FLASH1) + LENGTH(FLASH1) - 128: {
+    KEEP(*(.metadata))
+    . = ALIGN(128);
+  } >FLASH1 = 0x1234
+  */
+
+  .metadata : {
+    _smeta = .;   /* Mark start of metadata block */
+    KEEP(*(.metadata))
+    . = ALIGN(4);
+    _emeta = .;
+  } >METADATA = 0xFF
+
+
 
   /* Non-volatile flash filesystem */
   .storage0 (NOLOAD) : {
@@ -50,6 +71,7 @@ SECTIONS {
   /* Executable code */
   .text : {
     . = ALIGN(4);
+    _sflash1 = .;
     *(.text)
     *(.text*)
     *(.glue_7)      /* ARM to Thumb interworking */
@@ -67,10 +89,15 @@ SECTIONS {
     *(.rodata)
     *(.rodata*)
     . = ALIGN(4);
+    _eflash1 = .;
   } >FLASH1
+
+
 
   /* AAPCS table for stack unwinding, exception handling, etc. */
   .ARM.extab : {
+    . = ALIGN(4);
+    _sflash0 = .;
     *(.ARM.extab* .gnu.linkonce.armextab.*)
   } >FLASH0
 
@@ -107,7 +134,7 @@ SECTIONS {
 
   /* ******************** RAM ******************** */
 
-  _sidata = LOADADDR(.data);  /* Move to start of region */
+  _sidata = LOADADDR(.data);  /* ROM address for initialized data */
 
   /* Initialized data to be copied from flash */
   .data : {
@@ -117,6 +144,7 @@ SECTIONS {
     *(.data*)
     . = ALIGN(4);
     _edata = .;     /* Mark end of initialized data*/
+    _eflash0 = LOADADDR(.data) + SIZEOF(.data);
   } >RAM AT> FLASH0
 
 
