@@ -6,7 +6,6 @@
 #include "lib_cfg/build_config.h"
 #include "lib_cfg/cstone_cfg_stm32.h"
 #include "build_info.h"
-#include "app_main.h" // FIXME: Remove
 #include "cstone/platform.h"
 #include "cstone/debug.h"
 

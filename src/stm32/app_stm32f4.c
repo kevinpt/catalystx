@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "lib_cfg/build_config.h"
 #include "lib_cfg/cstone_cfg_stm32.h"
@@ -455,9 +456,7 @@ RCC_PeriphCLKInitTypeDef i2s_clk_cfg = {
   // Init buffer data to mid-scale
   int16_t *buf_pos = sdev->base.cfg.dma_buf_low;
   size_t buf_samples = sdev->base.cfg.half_buf_samples * 4;
-  for(size_t i = 0; i < buf_samples; i++) {
-    *buf_pos++ = 0; // FIXME: Change to memset
-  }
+  memset(buf_pos, 0, buf_samples * sizeof *buf_pos);
 
 
   // DMA setup

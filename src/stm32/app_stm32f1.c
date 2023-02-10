@@ -18,7 +18,6 @@ void uart_io_init(void) {
   // TX
   uart_pin_cfg.Pin        = GPIO_PIN_9;
   uart_pin_cfg.Mode       = GPIO_MODE_AF_PP;
-//  uart_pin_cfg.Mode       = GPIO_MODE_OUTPUT_PP;
   uart_pin_cfg.Speed      = GPIO_SPEED_FREQ_LOW;
   uart_pin_cfg.Pull       = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOA, &uart_pin_cfg);
@@ -27,16 +26,6 @@ void uart_io_init(void) {
   uart_pin_cfg.Pin        = GPIO_PIN_10;
   uart_pin_cfg.Mode       = GPIO_MODE_INPUT; //GPIO_MODE_AF_OD;
   HAL_GPIO_Init(GPIOA, &uart_pin_cfg);
-
-// FIXME: Remove
-#if 0
-  gpio_enable_port(GPIO_PORT_B);  
-  uart_pin_cfg.Pin        = GPIO_PIN_11;  // Labeled USART3 RX
-  uart_pin_cfg.Mode       = GPIO_MODE_AF_PP;
-  uart_pin_cfg.Speed      = GPIO_SPEED_FREQ_LOW;
-  uart_pin_cfg.Pull       = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOB, &uart_pin_cfg);
-#endif
 }
 
 

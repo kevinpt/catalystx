@@ -98,19 +98,6 @@ invocation of this function.
       *buf_pos++ = DAC_SAMPLE_ZERO;
       read_total++;
     }
-
-    // FIXME: Remove
-/*    buf_pos -= 4;
-    for(int i = 0; i < 4; i++) { // Fill remainder of buffer with 0's
-      *buf_pos++ = 0;
-    }*/
-/*
-    buf_pos = &buf[1];
-    for(int16_t i = 0; i < 32; i++) {
-      *buf_pos++ = (DAC_SAMPLE_ZERO / 4) + (i << 10);
-    }
-*/
-
   }
 
   return read_total;

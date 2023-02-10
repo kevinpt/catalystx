@@ -144,7 +144,6 @@ void SysTick_Handler(void) {
 static inline void process_uart_console_irq(int id) {
   bool tx_empty = false;
   uint8_t ch;
-  // FIXME: Make con static ?
   Console *con = console_find((ConsoleID){.kind=CON_UART, .id=id});
   USART_TypeDef *uart_dev = uart_get_device(id);
 
