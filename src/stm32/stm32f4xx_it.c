@@ -39,7 +39,7 @@
 #  endif
 #endif
 
-#include "stm32/stm32f4xx_it.h"
+#include "stm32/stm32_it.h"
 
 
 // https://maskray.me/blog/2021-11-07-init-ctors-init-array

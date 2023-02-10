@@ -21,7 +21,7 @@
 #include "cstone/io/uart_stm32.h"
 #include "cstone/faults.h"
 
-#include "stm32/stm32f4xx_it.h" // FIXME: Rename to be more generic
+#include "stm32/stm32_it.h"
 
 
 // https://maskray.me/blog/2021-11-07-init-ctors-init-array

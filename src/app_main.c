@@ -15,7 +15,7 @@
 #if defined PLATFORM_EMBEDDED
 #  include "app_gpio.h"
 #  include "stm32/app_stm32.h"
-#  include "stm32f4xx_it.h" // FIXME: Rename to generic stm32_it
+#  include "stm32_it.h"
 
 #  if defined PLATFORM_STM32F1
 #    include "stm32f1xx_hal.h"

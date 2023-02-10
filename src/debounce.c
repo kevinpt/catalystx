@@ -124,7 +124,7 @@ VDebounceWord vdebouncer_filtered(VerticalDebouncer *db) {
 // Requires input to be stable for 8 cycles on transition from '1' to '0'.
 // This eliminates delay during initial switch bounce. Switches that short
 // to ground on press should have their logic inverted before they're
-// passed into filter_samples().
+// passed into vdebouncer_fast_filter_samples().
 //
 // Noisy     _____--_--_-_-----------_--__-___________
 //

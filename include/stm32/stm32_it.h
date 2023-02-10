@@ -1,5 +1,5 @@
-#ifndef STM32F4XX_IT_H
-#define STM32F4XX_IT_H
+#ifndef STM32_IT_H
+#define STM32_IT_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,4 +30,4 @@ void SysTick_Handler(void);
 }
 #endif
 
-#endif // STM32F4XX_IT_H
+#endif // STM32_IT_H
