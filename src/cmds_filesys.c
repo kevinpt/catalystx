@@ -26,8 +26,6 @@
 #include "evfs.h"
 #include "cmds_filesys.h"
 
-extern mpPoolSet g_pool_set; // FIXME: Use sys pool
-
 
 static int32_t cmd_cd(uint8_t argc, char *argv[], void *eval_ctx) {
   if(argc < 2)
@@ -40,7 +38,7 @@ static int32_t cmd_cd(uint8_t argc, char *argv[], void *eval_ctx) {
 
 
 static int32_t cmd_pwd(uint8_t argc, char *argv[], void *eval_ctx) {
-  char *cwd = (char *)mp_alloc(&g_pool_set, EVFS_MAX_PATH, NULL);
+  char *cwd = (char *)mp_alloc(mp_sys_pools(), EVFS_MAX_PATH, NULL);
   if(!cwd)
     return 1;
 
@@ -50,7 +48,7 @@ static int32_t cmd_pwd(uint8_t argc, char *argv[], void *eval_ctx) {
   evfs_get_cur_dir(&cwd_r);
   puts(cwd);
 
-  mp_free(&g_pool_set, cwd);
+  mp_free(mp_sys_pools(), cwd);
   return 0;
 }
 
@@ -356,7 +354,7 @@ static int32_t cmd_ls(uint8_t argc, char *argv[], void *eval_ctx) {
     }
   }
 
-  char *path = (char *)mp_alloc(&g_pool_set, EVFS_MAX_PATH, NULL);
+  char *path = (char *)mp_alloc(mp_sys_pools(), EVFS_MAX_PATH, NULL);
   if(!path)
     return 1;
 
@@ -441,7 +439,7 @@ static int32_t cmd_ls(uint8_t argc, char *argv[], void *eval_ctx) {
     evfs_dir_close(dh);
   }
 
-  mp_free(&g_pool_set, path);
+  mp_free(mp_sys_pools(), path);
 
   return status;
 }
