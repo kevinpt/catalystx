@@ -53,7 +53,7 @@
 #include "cstone/error_log.h"
 #include "cstone/log_db.h"
 #include "cstone/log_info.h"
-#ifndef LOG_TO_RAM
+#if !LOG_TO_RAM
 #  ifdef PLATFORM_EMBEDDED
 #    include "cstone/log_stm32.h"
 #  else
@@ -83,12 +83,12 @@
 #  endif
 #  include "cstone/cmds_core.h"
 #  include "app_cmds.h"
-#  ifdef USE_FILESYSTEM
+#  if USE_FILESYSTEM
 #    include "cmds_filesys.h"
 #  endif
 #endif
 
-#ifdef USE_FILESYSTEM
+#if USE_FILESYSTEM
 #  include "evfs.h"
 #  include "evfs/romfs_fs.h"
 #  include "evfs/stdio_fs.h"
@@ -181,7 +181,7 @@ int16_t g_audio_buf[AUDIO_DMA_BUF_SAMPLES * AUDIO_DMA_BUF_CHANNELS];
 #endif
 
 
-#if defined LOG_TO_RAM
+#if LOG_TO_RAM
 // Small in-memory database for testing
 static uint8_t s_log_db_data[LOG_NUM_SECTORS * LOG_SECTOR_SIZE];
 
@@ -376,7 +376,7 @@ static void report_sys_name(void) {
 
 #endif // USE_CONSOLE
 
-#ifdef USE_FILESYSTEM
+#if USE_FILESYSTEM
 static void filesystem_init(void) {
   // Configure filesystem
   evfs_init();
@@ -393,7 +393,7 @@ static void filesystem_init(void) {
   unsigned no_dots = 1;
   evfs_vfs_ctrl(EVFS_CMD_SET_NO_DIR_DOTS, &no_dots);
 
-#  if ! defined LOG_TO_RAM
+#  if !LOG_TO_RAM
 #    define LOG_FILE_PATH  "logdb.dat"
   int fs_status = evfs_open(LOG_FILE_PATH, &s_log_db_file, EVFS_RDWR | EVFS_OPEN_OR_NEW);
   printf("EVFS opened log: %s\n", evfs_err_name(fs_status));
@@ -411,7 +411,7 @@ static void filesystem_init(void) {
 #endif // USE_FILESYSTEM
 
 
-#if defined PLATFORM_STM32F4 && !defined LOG_TO_RAM
+#if defined PLATFORM_STM32F4 && !LOG_TO_RAM
 uint32_t flash_sector_index(uint8_t *addr) {
   uint32_t flash_offset = (uint32_t)addr - 0x8000000ul;
 
@@ -468,7 +468,7 @@ static void platform_init(void) {
 #  ifdef PLATFORM_EMBEDDED
   command_suite_add(&s_cmd_suite, g_stm32_cmd_set);
 #  else // Hosted
-#    ifdef USE_FILESYSTEM
+#    if USE_FILESYSTEM
   command_suite_add(&s_cmd_suite, g_filesystem_cmd_set);
 #    endif
 #  endif
@@ -513,7 +513,7 @@ static void platform_init(void) {
   LL_RCC_ClearResetFlags(); // Reset flags persist across resets unless we clear them
 #endif
 
-#ifdef USE_FILESYSTEM
+#if USE_FILESYSTEM
   filesystem_init();
 #endif
 
@@ -522,13 +522,13 @@ static void platform_init(void) {
     .sector_size  = LOG_SECTOR_SIZE,
     .num_sectors  = LOG_NUM_SECTORS,
 
-#ifdef LOG_TO_RAM
+#if LOG_TO_RAM
     .ctx          = s_log_db_data,
     .erase_sector = log_ram_erase_sector,
     .read_block   = log_ram_read_block,
     .write_block  = log_ram_write_block
 #else
-#  ifndef USE_FILESYSTEM // Log to flash
+#  if !USE_FILESYSTEM // Log to flash
     .ctx          = s_log_db_data,
     .erase_sector = log_stm32_erase_sector,
     .read_block   = log_stm32_read_block,
@@ -545,24 +545,8 @@ static void platform_init(void) {
   logdb_init(&g_log_db, &log_db_cfg);
   logdb_mount(&g_log_db);
 
-#if defined PLATFORM_EMBEDDED
-
-// FIXME: switch to #cmakedefine01
-#  if defined LOG_TO_RAM
-#    define LOG_TO_RAM2   1
-#  else
-#    define LOG_TO_RAM2   0
-#  endif
-
-#  if defined USE_FILESYSTEM
-#    define LOG_TO_FILESYSTEM   1
-#  else
-#    define LOG_TO_FILESYSTEM   0
-#  endif
-
-#  ifndef NDEBUG
-  const char *location = LOG_TO_RAM2 ? "RAM" : LOG_TO_FILESYSTEM ? "Filesystem" : "Flash";
-#  endif
+#if defined PLATFORM_EMBEDDED && !defined NDEBUG
+  const char *location = LOG_TO_RAM ? "RAM" : USE_FILESYSTEM ? "Filesystem" : "Flash";
   DPRINT("LogDB %dx%d  @ %p in %s", LOG_NUM_SECTORS, LOG_SECTOR_SIZE, s_log_db_data,
                                     location);
 #endif
