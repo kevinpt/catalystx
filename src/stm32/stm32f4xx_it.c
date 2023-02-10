@@ -19,7 +19,7 @@
 #include "task.h"
 
 
-#ifdef USE_TINYUSB
+#if USE_TINYUSB
 #  include "device/usbd.h"
 #endif
 
@@ -208,7 +208,7 @@ void USART_IRQ_HANDLER(CONSOLE_UART_ID) {
   process_uart_console_irq(CONSOLE_UART_ID);
 }
 
-#ifdef USE_TINYUSB
+#if USE_TINYUSB
 void OTG_HS_IRQHandler(void);
 void OTG_HS_IRQHandler(void) {
   tud_int_handler(BOARD_DEVICE_RHPORT_NUM);

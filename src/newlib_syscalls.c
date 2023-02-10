@@ -8,7 +8,7 @@
 
 #include "build_config.h"
 
-#if defined USE_NEWLIB_NANO
+#if USE_NEWLIB_NANO
 #  if defined PLATFORM_STM32F1
 #    include "stm32f1xx_hal.h"  // For CMSIS __BKPT()
 #  else

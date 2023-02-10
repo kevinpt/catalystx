@@ -20,9 +20,9 @@
 #cmakedefine PLATFORM_STM32F4
 
 // Build option settings
-#cmakedefine USE_TINYUSB
-#cmakedefine USE_NEWLIB_NANO
-#cmakedefine USE_MINIMAL_TASKS
+#cmakedefine01 USE_TINYUSB
+#cmakedefine01 USE_NEWLIB_NANO
+#cmakedefine01 USE_MINIMAL_TASKS
 #cmakedefine01 USE_FILESYSTEM
 #cmakedefine01 USE_AUDIO
 

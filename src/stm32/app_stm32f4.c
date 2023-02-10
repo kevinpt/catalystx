@@ -188,7 +188,7 @@ void system_clock_init(void) {
 #  error "Unknown target system"
 #endif
 
-#ifdef USE_TINYUSB
+#if USE_TINYUSB
 void usb_io_init(void) {
 /*
 USB OTG_HS port:

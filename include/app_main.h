@@ -31,7 +31,7 @@
 
 
 // Memory pool settings
-#ifdef USE_MINIMAL_TASKS
+#if USE_MINIMAL_TASKS
 #  define POOL_SIZE_LG  128
 #  define POOL_SIZE_MD  64
 #  define POOL_SIZE_SM  20

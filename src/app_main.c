@@ -217,7 +217,7 @@ DEF_PIN(g_led_heartbeat,  GPIO_PORT_G, 14,  GPIO_PIN_OUTPUT_H);
 DEF_PIN(g_led_status,     GPIO_PORT_G, 13,  GPIO_PIN_OUTPUT_L);
 
 DEF_PIN(g_button1,        GPIO_PORT_A, 0,   GPIO_PIN_INPUT);
-#    ifdef USE_TINYUSB
+#    if USE_TINYUSB
 DEF_PIN(g_usb_pso,        GPIO_PORT_C, 4,   GPIO_PIN_OUTPUT_H);
 DEF_PIN(g_usb_oc,         GPIO_PORT_C, 5,   GPIO_PIN_INPUT);
 #    endif
@@ -879,7 +879,7 @@ int main(void) {
 
   // Prepare FreeRTOS
   core_tasks_init();
-#if defined PLATFORM_EMBEDDED && defined USE_TINYUSB
+#if defined PLATFORM_EMBEDDED && USE_TINYUSB
   usb_tasks_init();
 #endif
   app_tasks_init();
