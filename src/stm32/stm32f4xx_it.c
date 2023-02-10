@@ -216,15 +216,6 @@ void OTG_HS_IRQHandler(void) {
 #endif
 
 #if USE_AUDIO
-//HAL_I2S_IRQHandler()
-//HAL_I2SEx_FullDuplex_IRQHandler()
-
-/*extern I2S_HandleTypeDef g_i2s;
-void SPI2_IRQHandler(void);
-void SPI2_IRQHandler(void) {
-  HAL_I2S_IRQHandler(&g_i2s);
-}*/
-
 extern SynthState g_audio_synth;
 extern SampleDevice *g_dev_audio;
 extern TaskHandle_t g_audio_synth_task;
@@ -289,7 +280,7 @@ void DMA1_Stream5_IRQHandler(void) {
     // Fill low half of DMA buffer
     g_audio_synth.next_buf = g_dev_audio->cfg.dma_buf_low;
     vTaskNotifyGiveFromISR(g_audio_synth_task, &high_prio_task);
-    // FIXME: Need to call portYIELD_FROM_ISR(high_prio_task);
+    portYIELD_FROM_ISR(high_prio_task);
 
   } else if(LL_DMA_IsActiveFlag_TC5(DMA1)) {
     LL_DMA_ClearFlag_TC5(DMA1);
@@ -297,8 +288,7 @@ void DMA1_Stream5_IRQHandler(void) {
     // Fill high half of DMA buffer
     g_audio_synth.next_buf = g_dev_audio->cfg.dma_buf_high;
     vTaskNotifyGiveFromISR(g_audio_synth_task, &high_prio_task);
-    // FIXME: Need to call portYIELD_FROM_ISR(high_prio_task);
-
+    portYIELD_FROM_ISR(high_prio_task);
   }
 
 }
