@@ -231,15 +231,6 @@ extern TaskHandle_t g_audio_synth_task;
 
 
 #  ifdef USE_AUDIO_I2S
-#    ifdef USE_HAL_I2S
-extern DMA_HandleTypeDef g_dma;
-
-// I2S DMA interrupt
-void DMA1_Stream4_IRQHandler(void);
-void DMA1_Stream4_IRQHandler(void) {
-  HAL_DMA_IRQHandler(&g_dma);
-}
-#    else // LL I2S
 // I2S DMA interrupt
 void DMA1_Stream4_IRQHandler(void);
 void DMA1_Stream4_IRQHandler(void) {
@@ -265,7 +256,6 @@ void DMA1_Stream4_IRQHandler(void) {
     portYIELD_FROM_ISR(high_prio_task);
   }
 }
-#    endif
 #  endif
 
 #  ifdef USE_AUDIO_DAC

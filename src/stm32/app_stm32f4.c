@@ -379,9 +379,8 @@ for new data after every half-buffer is consumed.
 
 
 void i2s_hw_init(SampleDeviceI2S *sdev) {
-#ifndef USE_HAL_I2S
 /*
-Setup hardware to enable DAC output on GPIO port pin. DAC samples are driven by a timer
+Setup hardware to enable otput via I2S. DAC samples are driven by a timer
 triggered DMA transfer from a circular buffer. DMA interrupts signal audio_synth_task()
 for new data after every half-buffer is consumed.
 */
@@ -522,7 +521,6 @@ RCC_PeriphCLKInitTypeDef i2s_clk_cfg = {
   LL_I2S_Init(sdev->SPI_periph, &cfg);
   LL_I2S_Enable(sdev->SPI_periph);
   //LL_I2S_EnableDMAReq_TX(sdec->SPI_periph);
-#endif // USE_HAL_I2S
 }
 
 

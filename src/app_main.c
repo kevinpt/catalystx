@@ -655,7 +655,7 @@ static void platform_init(void) {
 // UMsg target callback for button events
 static void event_button_handler(UMsgTarget *tgt, UMsg *msg) {
   switch(msg->id) {
-  case P_EVENT_BUTTON__USER_RELEASE:
+  case P_EVENT_BUTTON_USER_RELEASE:
 #ifdef BOARD_STM32F429I_DISC1
     gpio_toggle(&g_led_status);
 #endif
@@ -700,64 +700,6 @@ DEF_PIN(g_i2s_gain,     GPIO_PORT_E, 1,  GPIO_PIN_OUTPUT_H);  // 3dB default
 //DEF_PIN(g_i2s_mco,     GPIO_PORT_C, 9,  GPIO_PIN_OUTPUT_H);
 
 
-#  ifdef USE_HAL_I2S
-
-I2S_HandleTypeDef g_i2s = {
-  .Instance = SPI2,
-  .Init = {
-    .Mode           = I2S_MODE_MASTER_TX,
-    .Standard       = I2S_STANDARD_PHILIPS,
-    .DataFormat     = I2S_DATAFORMAT_16B,
-    .MCLKOutput     = I2S_MCLKOUTPUT_DISABLE,
-#  if AUDIO_SAMPLE_RATE == 8000
-    .AudioFreq      = I2S_AUDIOFREQ_8K,
-#  elif AUDIO_SAMPLE_RATE == 16000
-    .AudioFreq      = I2S_AUDIOFREQ_16K,
-#  else
-#    error "Unsupported sample rate"
-#  endif
-    .CPOL           = I2S_CPOL_LOW,
-    .ClockSource    = I2S_CLOCK_PLL,
-    .FullDuplexMode = I2S_FULLDUPLEXMODE_DISABLE
-  }
-};
-
-
-DMA_HandleTypeDef g_dma = {
-  .Instance = DMA1_Stream4,
-  .Init = {
-    .Channel              = DMA_CHANNEL_0,  // S4_C0 = SPI2_TX  (RM0090 Table 42)
-    .Direction            = DMA_MEMORY_TO_PERIPH,
-    .PeriphInc            = DMA_PINC_DISABLE,
-    .MemInc               = DMA_MINC_ENABLE,
-    .PeriphDataAlignment  = DMA_PDATAALIGN_HALFWORD,
-    .MemDataAlignment     = DMA_MDATAALIGN_HALFWORD,
-    .Mode                 = DMA_CIRCULAR,
-    .Priority             = DMA_PRIORITY_MEDIUM,
-    .FIFOMode             = DMA_FIFOMODE_DISABLE,
-    .FIFOThreshold        = DMA_FIFO_THRESHOLD_HALFFULL,
-    .MemBurst             = DMA_MBURST_SINGLE,
-    .PeriphBurst          = DMA_PBURST_SINGLE
-  }
-};
-#  endif // USE_HAL_I2S
-
-#if 0
-typedef enum {
-  AUDIO_ENABLE,
-  AUDIO_DISABLE,  // Schedule to shutdown after source is idle
-  AUDIO_FORCE_OFF
-} AudioState;
-
-void audio_set_state(AudioState state) {
-  switch(state) {
-  case AUDIO_ENABLE:
-    
-  case AUDIO_DISABLE:
-  case AUDIO_FORCE_OFF:
-  }
-}
-#endif
 
 static void audio_ctl_handler(UMsgTarget *tgt, UMsg *msg) {
   // Avoid message loops for props set by console commands
@@ -785,12 +727,12 @@ static void audio_ctl_handler(UMsgTarget *tgt, UMsg *msg) {
     break;
 
 #if 0
-  case P_EVENT_BUTTON__USER_PRESS:
+  case P_EVENT_BUTTON_USER_PRESS:
     synth_press_key(&g_audio_synth, next_key + 69+12, 0);
     puts("Press");
     break;
 
-  case P_EVENT_BUTTON__USER_RELEASE:
+  case P_EVENT_BUTTON_USER_RELEASE:
     synth_release_key(&g_audio_synth, next_key + 69+12);
     printf("Release %d\n", next_key);
     next_key++;
@@ -915,13 +857,13 @@ static void portable_init(void) {
 
   // Monitor button presses
   umsg_tgt_callback_init(&g_tgt_event_buttons, event_button_handler);
-  umsg_tgt_add_filter(&g_tgt_event_buttons, P_EVENT_BUTTON_n_PRESS | P3_MSK | P4_MSK);
+  umsg_tgt_add_filter(&g_tgt_event_buttons, P1_EVENT| P2_BUTTON | P3_MSK | P4_MSK);
   umsg_hub_subscribe(&g_msg_hub, &g_tgt_event_buttons);
 
 #if USE_AUDIO
   umsg_tgt_callback_init(&g_tgt_audio_ctl, audio_ctl_handler);
   umsg_tgt_add_filter(&g_tgt_audio_ctl, (P1_APP | P2_AUDIO | P3_MSK | P4_MSK));
-  umsg_tgt_add_filter(&g_tgt_audio_ctl, (P_EVENT_BUTTON_n_PRESS | P3_MSK | P4_MSK));
+  umsg_tgt_add_filter(&g_tgt_audio_ctl, (P1_EVENT| P2_BUTTON | P3_MSK | P4_MSK));
   umsg_tgt_add_filter(&g_tgt_audio_ctl, (P_EVENT_KEY_n_PRESS | P3_MSK | P4_MSK));
   umsg_hub_subscribe(&g_msg_hub, &g_tgt_audio_ctl);
 #endif
@@ -962,25 +904,7 @@ int main(void) {
   synth_init(&g_audio_synth, AUDIO_SAMPLE_RATE, 260);
   //synth_set_marker(&g_audio_synth, /*enable*/ true);
 
-
-#ifdef USE_HAL_I2S
-  i2s_io_init();
-
-  if(HAL_I2S_Init(&g_i2s) != HAL_OK) {
-    DPUTS("I2S init error");
-  }
-
-  SampleDeviceCfg dev_audio_cfg = {
-    .dma_buf_low = &g_audio_buf[0],
-    .dma_buf_high = &g_audio_buf[COUNT_OF(g_audio_buf)/2],
-    .half_buf_samples = AUDIO_DMA_BUF_SAMPLES / 2,
-    .channels = 1,
-    .sample_out = i2s_synth_out,
-  };
-
-  sdev_init_i2s(&s_dev_audio, &dev_audio_cfg, &g_audio_synth, &g_i2s);
-#else // LL I2S
-
+#  if defined USE_AUDIO_I2S
   SampleDeviceCfg dev_audio_cfg = {
     .dma_buf_low = &g_audio_buf[0],
     .dma_buf_high = &g_audio_buf[COUNT_OF(g_audio_buf)/2],
@@ -995,9 +919,8 @@ int main(void) {
   sdev_init_i2s(&s_dev_audio, &dev_audio_cfg, &g_audio_synth, SPI2);
 
   i2s_hw_init(&s_dev_audio);
-#endif
 
-#ifdef USE_AUDIO_DAC
+#  elif defined USE_AUDIO_DAC
   SampleDeviceCfg dev_audio_cfg = {
     .dma_buf_low = &g_audio_buf[0],
     .dma_buf_high = &g_audio_buf[COUNT_OF(g_audio_buf)/2],
@@ -1012,7 +935,9 @@ int main(void) {
   sdev_init_dac(&s_dev_audio, &dev_audio_cfg, &g_audio_synth, DAC1, LL_DAC_CHANNEL_1);
 
   dac_hw_init(&s_dev_audio);
-#endif
+#  else
+#    error "No audio driver configured"  
+#  endif
 
 
   // Configure synth instruments

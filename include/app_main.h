@@ -94,7 +94,6 @@
 #    define USE_AUDIO_DAC
 #  else
 #    define USE_AUDIO_I2S
-//#    define USE_HAL_I2S     // FIXME: Convert I2S/DMA to LL API
 #  endif
 #endif
 #define AUDIO_DMA_BUF_SAMPLES   512
@@ -104,11 +103,6 @@
 #define P_DEBUG_SYS_LOCAL_VALUE     (P1_DEBUG | P2_SYS | P3_LOCAL | P4_VALUE)
 #define P_APP_INFO_BUILD_VERSION   (P1_APP | P2_INFO | P3_BUILD | P4_VERSION)
 
-// Events
-#define P_EVENT_BUTTON_n_PRESS      (P1_EVENT | P2_BUTTON | P2_ARR(0) | P4_PRESS)
-
-// FIXME: Switch to app namespace for P3 field
-#define P_EVENT_BUTTON__USER_PRESS  (P_EVENT_BUTTON_n_PRESS | P2_ARR(0))
 
 
 typedef enum {

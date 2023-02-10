@@ -9,6 +9,7 @@ M(P2, VALVE,     70) \
 M(P2, ZONE,      71) \
 \
 M(P3, INST0,  60) \
+M(P3, USER,   61) \
 \
 M(P4, FREQ,     60) \
 M(P4, WAVE,     61) \
@@ -35,6 +36,10 @@ enum PropElementsApp {
 #define P_EVENT_VALVE_n_OFF       (P1_EVENT | P2_VALVE | P2_ARR(0) | P4_OFF)
 #define P_EVENT_ZONE_n_ON         (P1_EVENT | P2_ZONE | P2_ARR(0) | P4_ON)
 #define P_EVENT_ZONE_n_OFF        (P1_EVENT | P2_ZONE | P2_ARR(0) | P4_OFF)
+
+
+#define P_EVENT_BUTTON_USER_PRESS   (P1_EVENT | P2_BUTTON | P3_USER | P4_PRESS)
+#define P_EVENT_BUTTON_USER_RELEASE (P1_EVENT | P2_BUTTON | P3_USER | P4_RELEASE)
 
 
 #endif // APP_PROP_ID_H

@@ -10,12 +10,8 @@
 #include "cstone/platform.h"
 #include "cstone/debug.h"
 
-#ifdef USE_HAL_I2S
-#include "stm32f4xx_hal.h"
-#else
 #include "stm32f4xx_ll_spi.h"
 #include "stm32f4xx_ll_dma.h"
-#endif
 
 #include "sample_device.h"
 #include "sample_device_i2s.h"
@@ -111,35 +107,6 @@ invocation of this function.
 }
 
 
-
-
-#ifdef USE_HAL_I2S
-static void sdev_enable_i2s(SampleDevice *sdev, bool enable) {
-  SampleDeviceI2S *i2s = (SampleDeviceI2S *)sdev;
-
-  if(enable) {
-    // FIXME: Convert to I2S
-//    if(!LL_DAC_IsDMAReqEnabled(dac->DAC_periph, dac->DAC_channel)) {
-//      // Fill buffer with new samples to reduce output delay
-//      dac_synth_out(sdev, sdev->cfg.dma_buf_low, sdev->cfg.half_buf_samples*2);
-//    }
-
-    HAL_I2S_DMAResume(i2s->hi2s);
-  } else {
-    HAL_I2S_DMAPause(i2s->hi2s);
-  }
-}
-
-
-
-void sdev_init_i2s(SampleDeviceI2S *sdev, SampleDeviceCfg *cfg, void *ctx, I2S_HandleTypeDef *hi2s) {
-  memset(sdev, 0, sizeof *sdev);
-  sdev_init((SampleDevice *)sdev, cfg, ctx);
-  sdev->base.cfg.enable = sdev_enable_i2s;
-  sdev->hi2s = hi2s;
-}
-#else
-
 static void sdev_enable_i2s(SampleDevice *sdev, bool enable) {
   SampleDeviceI2S *i2s = (SampleDeviceI2S *)sdev;
 
@@ -171,5 +138,5 @@ void sdev_init_i2s(SampleDeviceI2S *sdev, SampleDeviceCfg *cfg, void *ctx, SPI_T
   sdev->base.cfg.enable = sdev_enable_i2s;
   sdev->SPI_periph = SPI_periph;
 }
-#endif
+
 
