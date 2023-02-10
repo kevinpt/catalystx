@@ -1,35 +1,36 @@
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "debounce.h"
 
 void debouncer_init(Debouncer *db, unsigned sample_ms, unsigned filter_ms, bool init_filter) {
-  db->Sample_ms = sample_ms;
-  db->Filter_ms = filter_ms;
+  db->sample_ms = sample_ms;
+  db->filter_ms = filter_ms;
 
   // Number of periodic samples required to consider an input stable
-  db->Stable_periods = (db->Filter_ms + db->Sample_ms-1) / db->Sample_ms;
+  db->stable_periods = (db->filter_ms + db->sample_ms-1) / db->sample_ms;
 
-  db->m_unstable_count = db->Stable_periods;
-  db->m_filtered = init_filter;
-  db->m_prev = init_filter;
+  db->unstable_count = db->stable_periods;
+  db->filtered = init_filter;
+  db->prev = init_filter;
 };
 
 
 
 bool debouncer_filter_sample(Debouncer *db, bool noisy_in) {
-  db->m_prev = db->m_filtered;
+  db->prev = db->filtered;
 
-  if(noisy_in == db->m_filtered) { // No change; Keep counter reset
-    db->m_unstable_count = db->Stable_periods;
+  if(noisy_in == db->filtered) { // No change; Keep counter reset
+    db->unstable_count = db->stable_periods;
     return false;
   }
 
   // Count down until stable duration reached
-  if(db->m_unstable_count > 0) {
-    if(--db->m_unstable_count == 0) {
-      db->m_filtered = noisy_in;
-      db->m_unstable_count = db->Stable_periods;
+  if(db->unstable_count > 0) {
+    if(--db->unstable_count == 0) {
+      db->filtered = noisy_in;
+      db->unstable_count = db->stable_periods;
       return true;
     }
   }
@@ -38,20 +39,19 @@ bool debouncer_filter_sample(Debouncer *db, bool noisy_in) {
 };
 
 bool debouncer_filtered(Debouncer *db) {
-  return db->m_filtered;
+  return db->filtered;
 };
 
 bool debouncer_rising_edge(Debouncer *db) {
-  return db->m_filtered != db->m_prev && db->m_filtered;
+  return db->filtered != db->prev && db->filtered;
 };
 
 bool debouncer_falling_edge(Debouncer *db) {
-  return db->m_filtered != db->m_prev && !db->m_filtered;
+  return db->filtered != db->prev && !db->filtered;
 };
 
 
-#if 0
-// FIXME: Convert to C
+
 /*
 
 3-bit ripple carry adder with a == 0x01, count in b:
@@ -69,7 +69,7 @@ c2 = (b2 & a2) | (c1 & (a2^b2))   --> c1 & b2
 
 */
 
-// Vertical debouncer for sizeof(T)*8 parallel inputs
+// Vertical debouncer for sizeof(VDebounceWord)*8 parallel inputs
 // Requires input to be stable for 8 cycles on both transitions before filter
 // output changes.
 //
@@ -81,44 +81,45 @@ c2 = (b2 & a2) | (c1 & (a2^b2))   --> c1 & b2
 //                Delayed rise >--'               `--< Delayed fall
 //                in output
 
-template <class T>
-class VerticalDebouncer {
-private:
-  T m_s[3]; // 3-bit vertical count
-  T m_filtered;
 
-public:
-  VerticalDebouncer(T init_filter) : m_s{0}, m_filtered(init_filter) {};
+void vdebouncer_init(VerticalDebouncer *db, VDebounceWord init_filter) {
+  memset(&db->vcount, 0, sizeof db->vcount);
+  db->filtered = init_filter;
+}
 
-  T filter_samples(T noisy_in) {
-    T c1, c2;
+//  VerticalDebouncer(T init_filter) : vcount{0}, filtered(init_filter) {};
 
-    // Advance vertical counters
-    m_s[0] = ~m_s[0];
+VDebounceWord vdebouncer_filter_samples(VerticalDebouncer *db, VDebounceWord noisy_in) {
+  VDebounceWord c1, c2;
 
-    c1 = m_s[0] & m_s[1];
-    m_s[1] = m_s[0] ^ m_s[1];
+  // Advance vertical counters
+  db->vcount[0] = ~db->vcount[0];
 
-    m_s[2] = c1 ^ m_s[2];
+  c1 = db->vcount[0] & db->vcount[1];
+  db->vcount[1] = db->vcount[0] ^ db->vcount[1];
 
-    // Reset counts for unchanged inputs and those still bouncing
-    T unstable = noisy_in ^ m_filtered;
-    m_s[0] &= unstable;
-    m_s[1] &= unstable;
-    m_s[2] &= unstable;
+  db->vcount[2] = c1 ^ db->vcount[2];
 
-    // Carry out indicates count overflow == stable in new state for 8 samples
-    c2 = m_s[2] & c1;
+  // Reset counts for unchanged inputs and those still bouncing
+  VDebounceWord unstable = noisy_in ^ db->filtered;
+  db->vcount[0] &= unstable;
+  db->vcount[1] &= unstable;
+  db->vcount[2] &= unstable;
 
-    m_filtered ^= c2;
+  // Carry out indicates count overflow == stable in new state for 8 samples
+  c2 = db->vcount[2] & c1;
 
-    return m_filtered;
-  }
+  db->filtered ^= c2;
 
-  T filtered(void) { return m_filtered; };
+  return db->filtered;
+}
+
+VDebounceWord vdebouncer_filtered(VerticalDebouncer *db) {
+  return db->filtered;
 };
 
-// Vertical debouncer for sizeof(T)*8 parallel inputs with fast response.
+
+// Vertical debouncer for sizeof(VDebounceWord)*8 parallel inputs with fast response.
 // Fast filter response for transition from '0' to '1'.
 // Requires input to be stable for 8 cycles on transition from '1' to '0'.
 // This eliminates delay during initial switch bounce. Switches that short
@@ -133,49 +134,35 @@ public:
 //                `--< Immediate rise             `--< Delayed fall
 //                     in output
 
-template <class T>
-class VerticalDebouncerFastRise {
-private:
-  T m_s[3]; // 3-bit vertical count
-  T m_filtered;
+VDebounceWord vdebouncer_fast_filter_samples(VerticalDebouncer *db, VDebounceWord noisy_in) {
+  VDebounceWord c1, c2;
 
-public:
-  VerticalDebouncerFastRise(T init_filter) : m_s{0}, m_filtered(init_filter) {};
+  // Advance vertical counters
+  db->vcount[0] = ~db->vcount[0];
 
-  T filter_samples(T noisy_in) {
-    T c1, c2;
+  c1 = db->vcount[0] & db->vcount[1];
+  db->vcount[1] = db->vcount[0] ^ db->vcount[1];
 
-    // Advance vertical counters
-    m_s[0] = ~m_s[0];
+  db->vcount[2] = c1 ^ db->vcount[2];
 
-    c1 = m_s[0] & m_s[1];
-    m_s[1] = m_s[0] ^ m_s[1];
+  // Reset counts for unchanged inputs and those still bouncing
+  VDebounceWord unstable = noisy_in ^ db->filtered;
 
-    m_s[2] = c1 ^ m_s[2];
+  db->vcount[0] &= unstable;
+  db->vcount[1] &= unstable;
+  db->vcount[2] &= unstable;
 
-    // Reset counts for unchanged inputs and those still bouncing
-    T unstable = noisy_in ^ m_filtered;
+  // Carry out indicates count overflow == stable in new state for 8 samples
+  c2 = db->vcount[2] & c1;
 
-    m_s[0] &= unstable;
-    m_s[1] &= unstable;
-    m_s[2] &= unstable;
+  // Pressed buttons force immediate change on filter output
+  VDebounceWord pressed = unstable & noisy_in; // Pressed = 1
+  db->filtered |= pressed;
 
-    // Carry out indicates count overflow == stable in new state for 8 samples
-    c2 = m_s[2] & c1;
+  // Toggle back to released after counter overflow
+  db->filtered ^= c2;
 
-    // Pressed buttons force immediate change on filter output
-    T pressed = unstable & noisy_in; // Pressed = 1
-    m_filtered |= pressed;
-
-    // Toggle back to released after counter overflow
-    m_filtered ^= c2;
-
-    return m_filtered;
-  }
-
-  T filtered(void) { return m_filtered; };
-};
-
-#endif
+  return db->filtered;
+}
 
 
