@@ -5,6 +5,7 @@
 
 #include "lib_cfg/build_config.h"
 #include "cstone/platform.h"
+#include "app_main.h"
 
 #ifdef PLATFORM_EMBEDDED
 #  include "stm32f4xx_hal.h"
@@ -16,16 +17,21 @@
 #  include "timers.h"
 #endif
 
+#include "util/dhash.h"
+#include "util/range_strings.h"
+
 #include "cstone/prop_id.h"
 #include "cstone/iqueue_int16_t.h"
 #include "cstone/umsg.h"
 #include "cstone/rtos.h"
 #include "cstone/led_blink.h"
 #include "cstone/debug.h"
+#ifdef USE_CRON
+#  include "cstone/prop_db.h"
+#  include "cstone/cron_events.h"
+#endif
 
-#include "util/dhash.h"
 
-#include "app_main.h"
 #include "app_tasks.h"
 #ifdef PLATFORM_EMBEDDED
 #  include "app_gpio.h"
@@ -35,7 +41,6 @@
 #if defined PLATFORM_EMBEDDED && USE_AUDIO
 #  include "audio_synth.h"
 #  include "sample_device.h"
-//#  include "i2s.h"
 #endif
 
 #ifndef COUNT_OF
@@ -84,7 +89,11 @@ void app_tasks_init(void) {
   );
 
   xTimerStart(debounce_timer, 0);
-#endif // PLATFORM_EMBEDDED
+#endif // BOARD_STM32F429I_DISC1
+
+#ifdef USE_CRON
+  cron_init();
+#endif
 }
 
 

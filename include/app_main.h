@@ -8,6 +8,9 @@
 
 
 #define USE_CONSOLE
+#define USE_PROP_ID_FIELD_NAMES
+#define USE_CRON
+
 
 // Console settings
 #ifdef USE_CONSOLE

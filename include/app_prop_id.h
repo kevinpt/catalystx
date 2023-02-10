@@ -5,6 +5,8 @@
 \
 M(P2, AUDIO,     60) \
 M(P2, KEY,       61) \
+M(P2, VALVE,     70) \
+M(P2, ZONE,      71) \
 \
 M(P3, INST0,  60) \
 \
@@ -27,6 +29,12 @@ enum PropElementsApp {
 
 #define P_EVENT_KEY_n_PRESS       (P1_EVENT | P2_KEY | P2_ARR(0) | P4_PRESS)
 #define P_EVENT_KEY_n_RELEASE     (P1_EVENT | P2_KEY | P2_ARR(0) | P4_RELEASE)
+
+// Cron events
+#define P_EVENT_VALVE_n_ON        (P1_EVENT | P2_VALVE | P2_ARR(0) | P4_ON)
+#define P_EVENT_VALVE_n_OFF       (P1_EVENT | P2_VALVE | P2_ARR(0) | P4_OFF)
+#define P_EVENT_ZONE_n_ON         (P1_EVENT | P2_ZONE | P2_ARR(0) | P4_ON)
+#define P_EVENT_ZONE_n_OFF        (P1_EVENT | P2_ZONE | P2_ARR(0) | P4_OFF)
 
 
 #endif // APP_PROP_ID_H

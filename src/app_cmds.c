@@ -10,6 +10,7 @@
 #ifdef TEST_CRC
 #  include "stm32f4xx_ll_crc.h"
 #endif
+#include "app_main.h"
 
 #include "FreeRTOS.h"
 #include "semphr.h"
@@ -40,6 +41,10 @@
 #if USE_AUDIO
 #  include "cstone/umsg.h"
 #  include "audio_synth.h"
+#endif
+
+#ifdef USE_CRON
+#  include "cstone/cron_events.h"
 #endif
 
 
@@ -579,6 +584,9 @@ static int32_t cmd_crc(uint8_t argc, char *argv[], void *eval_ctx) {
 const ConsoleCommandDef g_app_cmd_set[] = {
 #ifdef TEST_CRC
   CMD_DEF("crc",      cmd_crc,   "Test CRC"),
+#endif
+#ifdef USE_CRON
+  CMD_DEF("cron",     cmd_cron,       "Schedule events"),
 #endif
   CMD_DEF("demo",     cmd_demo,  "Demo app command"),
 #if USE_AUDIO
