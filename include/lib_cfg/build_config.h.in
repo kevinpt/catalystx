@@ -33,7 +33,7 @@
 #cmakedefine BOARD_UNKNOWN
 
 
-#if defined USE_TINYUSB
+#if USE_TINYUSB
 #  define USE_USB
 #endif
 

@@ -548,35 +548,10 @@ profile_report_all();
 }
 
 
-extern const ObjectMetadata g_metadata;
-#define CHAR_PASS   A_BGRN u8"✓" A_NONE
-#define CHAR_FAIL   A_BRED u8"✗" A_NONE
-
-// FIXME: Replace
-static void XXvalidate_metadata(void) {
-  // Check firmware crc
-  uint32_t obj_crc;
-  firmware_crc(g_metadata.mem_regions, &obj_crc);
-
-  // Check metadata CRC
-#define FIELD_SIZE(t, f)  sizeof(((t *)0)->f)
-  uint16_t meta_crc = crc16_init();
-  // Skip over initial CRCs in metadata struct
-  size_t meta_offset = offsetof(ObjectMetadata, meta_crc) + FIELD_SIZE(ObjectMetadata, meta_crc);
-  meta_crc = crc16_update_block(meta_crc, (uint8_t *)&g_metadata + meta_offset,
-                                sizeof g_metadata - meta_offset);
-  meta_crc = crc16_finish(meta_crc);
-
-  printf("   App CRC: 0x%08"PRIX32" %s\n", obj_crc, obj_crc == g_metadata.obj_crc ? CHAR_PASS : CHAR_FAIL);
-  printf("  Meta CRC: 0x%04X %s\n", meta_crc, meta_crc == g_metadata.meta_crc ? CHAR_PASS : CHAR_FAIL);
-}
-
 
 static int32_t cmd_crc(uint8_t argc, char *argv[], void *eval_ctx) {
   test_crc32();
-
-  XXvalidate_metadata();
-
+  validate_metadata();
   return 0;
 }
 #endif // TEST_CRC
