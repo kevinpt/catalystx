@@ -10,6 +10,7 @@
 #define USE_CONSOLE
 #define USE_PROP_ID_FIELD_NAMES
 #define USE_CRON
+//#define USE_FAST_PROFILING
 
 
 // Console settings

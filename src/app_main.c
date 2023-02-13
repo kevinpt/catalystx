@@ -787,10 +787,12 @@ static void portable_init(void) {
   to_si_value(SystemCoreClock, 0, si_buf, sizeof si_buf, /*frac_places*/1, SIF_SIMPLIFY);
   printf("Core clock: %sHz\n", si_buf);
 
-//  cycle_counter_init();
-//  profile_init(cycle_count, SystemCoreClock, /*max_profiles*/0);
-
+#ifdef USE_FAST_PROFILING
+  cycle_counter_init();
+  profile_init(cycle_count, SystemCoreClock, /*max_profiles*/0);
+#else
   profile_init(perf_timer_count, perf_timer_freq(), /*max_profiles*/0);
+#endif
 
   // Validate firmware
   // FIXME

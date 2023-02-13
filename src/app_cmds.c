@@ -568,6 +568,7 @@ const ConsoleCommandDef g_app_cmd_set[] = {
   CMD_DEF("audio",    cmd_audio,      "Sound control"),
   CMD_DEF("key",      cmd_key,        "Play key"),
 #endif
+  CMD_DEF("PROFile",  cmd_profile,    "Profile stats"),
 #ifdef PLATFORM_STM32F4
   CMD_DEF("rcc",      cmd_rcc,        "Debug RCC"),
 #endif
