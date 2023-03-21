@@ -398,7 +398,7 @@ int generate_crcs(const char *elf_file, const char *bin_file, bool verbose, bool
 
   if(verbose) {
     puts("Metadata:");
-    dump_array_ex((uint8_t *)obj_meta, meta_data->d_size, /*show_ascii*/true, colorize);
+    dump_array((uint8_t *)obj_meta, meta_data->d_size);
   }
 
   // Report info from metadata

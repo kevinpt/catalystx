@@ -17,7 +17,7 @@ cmake_minimum_required(VERSION 3.20)
 
 
 project(elf_patch
-  VERSION 1.0.0
+  VERSION 1.0.1
   LANGUAGES C
 )
 
@@ -45,6 +45,7 @@ set(APP_SOURCE_COMMON
     ${CSTONE_UTIL}/crc16.c
     ${CSTONE_UTIL}/crc32.c
     ${CSTONE_UTIL}/hex_dump.c
+    ${CSTONE_UTIL}/string_ops.c
 )
 
 add_executable(elf-patch  ${APP_SOURCE_COMMON})
