@@ -13,8 +13,12 @@
 #include "stm32f4xx_ll_dac.h"
 #include "stm32f4xx_ll_spi.h"
 #include "stm32f4xx_ll_dma.h"
+#include "stm32f4xx_ll_exti.h"
+#include "stm32f4xx_ll_system.h"
+
 
 #include "FreeRTOS.h"
+#include "queue.h"
 
 #include "cstone/io/uart.h"
 #include "cstone/io/usb.h"
@@ -28,6 +32,7 @@
 #  include "sample_device_i2s.h"
 #  include "i2s.h"
 #endif
+#include "buzzer.h"
 #include "app_stm32.h"
 #include "app_gpio.h"
 
@@ -602,4 +607,74 @@ RCC_PeriphCLKInitTypeDef i2s_clk_cfg = {
 #endif
 }
 #endif
+
+
+
+
+//QueueHandle_t g_buzzer_cmd_q = 0;
+
+void buzzer_hw_init(void) {
+  // Queue for interrupt handlers to communicate with buzzer task
+//  g_buzzer_cmd_q = xQueueCreate(4, sizeof(uint8_t));
+
+
+  // Timer init
+  BUZZ_TIMER_CLK_ENABLE();
+
+// Buzzer timer will tick at 500us. We need a clock that is evenly divisible
+// into the APB clock frequency and generates a prescaler that fits into uint16_t.
+#define BUZZ_CLOCK_HZ  2000    // Evenly divisible into 90MHz and 84MHz
+#define TIMER_COUNT_MS(ms)  (((ms) * BUZZ_CLOCK_HZ / 1000) - 1)
+
+  uint32_t timer_clk = timer_clock_rate(BUZZ_TIMER);
+  uint16_t prescaler = (timer_clk / BUZZ_CLOCK_HZ) - 1;
+
+  // Config with 125ms timeout
+  LL_TIM_InitTypeDef tim_cfg;
+  LL_TIM_StructInit(&tim_cfg);
+  tim_cfg.Autoreload    = TIMER_COUNT_MS(125);
+  tim_cfg.Prescaler     = prescaler;
+
+  LL_TIM_SetCounter(BUZZ_TIMER, 0);
+  LL_TIM_Init(BUZZ_TIMER, &tim_cfg);
+
+  // Output compare for 65ms timeout
+  LL_TIM_OC_InitTypeDef tim_oc_cfg;
+  LL_TIM_OC_StructInit(&tim_oc_cfg);
+  tim_oc_cfg.OCState = LL_TIM_OCSTATE_ENABLE;
+  tim_oc_cfg.CompareValue = TIMER_COUNT_MS(65);
+  LL_TIM_OC_Init(BUZZ_TIMER, LL_TIM_CHANNEL_CH1, &tim_oc_cfg);
+
+  // Prepare timer interrupts
+  LL_TIM_ClearFlag_UPDATE(BUZZ_TIMER);
+  LL_TIM_ClearFlag_CC1(BUZZ_TIMER);
+
+  LL_TIM_EnableIT_UPDATE(BUZZ_TIMER);
+  LL_TIM_EnableIT_CC1(BUZZ_TIMER);
+  LL_TIM_DisableCounter(BUZZ_TIMER); // Enabled by EXTI on buzzer pin
+
+  HAL_NVIC_SetPriority(BUZZ_TIMER_IRQ, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY, 0);
+  NVIC_EnableIRQ(BUZZ_TIMER_IRQ);
+
+
+  // Pin change interrupt on EXTI12 (PB12)
+  gpio_config(GPIO_PORT_B, 12, GPIO_PIN_INPUT);
+  //LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_SYSCFG);
+  __HAL_RCC_SYSCFG_CLK_ENABLE();
+  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTB, LL_SYSCFG_EXTI_LINE12);
+
+  LL_EXTI_InitTypeDef cfg = {
+    .Line_0_31    = LL_EXTI_LINE_12,
+    .LineCommand  = ENABLE,
+    .Mode         = LL_EXTI_MODE_IT,
+    .Trigger      = LL_EXTI_TRIGGER_RISING
+  };
+
+  LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_12);
+  LL_EXTI_Init(&cfg);
+
+  HAL_NVIC_SetPriority(BUZZ_PIN_IRQ, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY, 0);
+  NVIC_EnableIRQ(BUZZ_PIN_IRQ);
+
+}
 

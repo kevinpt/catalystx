@@ -94,8 +94,10 @@
 #if USE_AUDIO
 #  if defined BOARD_STM32F429I_DISC1
 #    define USE_AUDIO_DAC
-#  else
+#  elif defined BOARD_STM32F401_BLACK_PILL
 #    define USE_AUDIO_I2S
+#  elif defined PLATFORM_HOSTED
+#    define USE_AUDIO_SDL
 #  endif
 #endif
 #define AUDIO_DMA_BUF_SAMPLES   512

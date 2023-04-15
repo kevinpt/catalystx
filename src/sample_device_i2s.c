@@ -23,7 +23,19 @@
 unsigned i2s_synth_out(SampleDevice *sdev, int16_t *buf, unsigned buf_count) {
   SynthState *audio_synth = (SynthState *)sdev->ctx;
 
-  size_t q_count = synth_gen_samples(audio_synth, buf_count);
+
+  synth_gen_samples(audio_synth, buf_count);
+
+// FIXME: Fix bug when calling update_sample_dev_state()
+#if 0
+  DPRINT("#1 sdev=%p state=%d", sdev, sdev->state);
+if(audio_synth->voice_state == VOICES_IDLE) {
+  DPRINT("#2 sdev=%p state=%d", sdev, sdev->state);
+  if(!update_sample_dev_state(sdev, audio_synth))
+    return 0;
+}
+
+#else
   if(audio_synth->voice_state == VOICES_IDLE) {
 /*
 The synth has no active voices so we can disable the DMA to save on processor load.
@@ -38,6 +50,7 @@ Note that when the DMA is disabled by SDEV_OP_SHUTDOWN_END it will trigger a TC
 interrupt one last time to indicate end of transfer. That will cause a third
 invocation of this function.
 */
+    DPRINT("IDLE VOICES %p state=%d", sdev, sdev->state);
     switch(sdev->state) {
     case SDEV_ACTIVE:
       DPRINT("ACTIVE-> SHUTDOWN");
@@ -45,19 +58,20 @@ invocation of this function.
       // Continue to 0-fill first half of buffer
       break;
     case SDEV_SHUTDOWN:
-      DPRINT("SHUTDOWN -> END\tq_count: %u", (unsigned)q_count);
+      DPRINT("SHUTDOWN -> END");
       sdev_ctl(sdev, SDEV_OP_SHUTDOWN_END, NULL, 0);
       // Continue to 0-fill second half of buffer
       break;
     case SDEV_INACTIVE:
       // Third invocation caused by DMA end of transfer
+      DPRINT("INACTIVE");
       return 0;
       break;
     default:
       break;
     }  
   }
-
+#endif
   int16_t *samples;
   size_t sample_count = iqueue_peek__int16_t(audio_synth->queue, &samples);
   bool peek_twice = sample_count < buf_count;

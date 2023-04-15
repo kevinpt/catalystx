@@ -77,40 +77,6 @@ configure_file (
 )
 
 
-function(m4_template TEMPLATE T)
-  # Convert a template to source code using m4
-
-  # TEMPLATE should be a file with a extra ".m4" extension on the end.
-  # It must have a path component containing the directory "template".
-  # You can use any arbitrary directory structure after the "template" part.
-  #
-  # Ex:
-  #   m4_template("/proj/template/xxx/code.h.m4" "uint8_t")
-  #   Generates ${CMAKE_BINARY_DIR}/template/xxx/code_uint8_t.h
-  #   Use dependency "template/xxx/code_uint8_t.h" in target sources
-
-  cmake_path(GET TEMPLATE PARENT_PATH template_dir)
-  cmake_path(GET TEMPLATE STEM template_stem)
-  cmake_path(GET TEMPLATE EXTENSION template_ext)
-  # Strip ".m4" final extension
-  cmake_path(REMOVE_EXTENSION template_ext LAST_ONLY  OUTPUT_VARIABLE dest_ext)
-  # Extract template portion of the path
-  string(REGEX REPLACE ".*(template[/\\].*)$" "\\1" DEST_DIR ${template_dir})
-  # Build destination path
-  cmake_path(SET DEST ${DEST_DIR})
-  cmake_path(APPEND DEST "${template_stem}_${T}${dest_ext}")
-#  message("Generating: ${DEST}")
-
-  add_custom_command(
-    OUTPUT ${DEST}
-    COMMAND
-      mkdir -p ${DEST_DIR}
-    COMMAND
-      m4 -s -D "T=${T}" ${TEMPLATE} > ${DEST}
-    DEPENDS ${TEMPLATE}
-  )
-endfunction(m4_template)
-
 
 #################### Target config ####################
 if(PLATFORM_STM32F1)
@@ -243,6 +209,13 @@ endif(USE_TINYUSB)
 add_subdirectory(libraries/cstone)
 
 
+#################### SDL ####################
+
+if(PLATFORM_HOSTED AND USE_AUDIO)
+  find_package(SDL2 REQUIRED SDL2)
+endif()
+
+
 
 ####################               ####################
 #################### BUILD TARGETS ####################
@@ -250,8 +223,8 @@ add_subdirectory(libraries/cstone)
 
 #################### catalyst app ####################
 
-m4_template("${CMAKE_SOURCE_DIR}/libraries/cstone/template/cstone/iqueue.h.m4"  "int16_t")
-m4_template("${CMAKE_SOURCE_DIR}/libraries/cstone/template/cstone/iqueue.c.m4"  "int16_t")
+m4_template("libraries/cstone/template/cstone/iqueue.h.m4"  "int16_t")
+m4_template("libraries/cstone/template/cstone/iqueue.c.m4"  "int16_t")
 
 
 set(APP_SOURCE_COMMON
@@ -260,14 +233,16 @@ set(APP_SOURCE_COMMON
     src/app_cmds.c
     src/build_info.c
     $<$<BOOL:${USE_AUDIO}>:src/sample_device.c>
-    $<$<BOOL:${USE_AUDIO}>:src/sample_device_i2s.c>
-    $<$<AND:$<BOOL:${USE_AUDIO}>,$<STREQUAL:${DEVICE_MODEL},stm32f429>>:src/sample_device_dac.c>
+    $<$<BOOL:${USE_AUDIO}>:src/audio_synth.c>
     $<$<BOOL:${USE_FILESYSTEM}>:src/cmds_filesys.c>
     $<$<BOOL:${USE_FILESYSTEM}>:src/log_evfs.c>
     ${CMAKE_BINARY_DIR}/template/cstone/iqueue_int16_t.h
     ${CMAKE_BINARY_DIR}/template/cstone/iqueue_int16_t.c
 )
 
+set(APP_SOURCE_BUILD_HOSTED
+  $<$<BOOL:${USE_AUDIO}>:src/sample_device_sdl.c>
+)
 
 # STM32 platform specific code
 set(APP_SOURCE_BUILD_EMBEDDED
@@ -278,7 +253,8 @@ set(APP_SOURCE_BUILD_EMBEDDED
     src/newlib_syscalls.c
     $<$<BOOL:${USE_TINYUSB}>:src/usb.c>
     $<$<BOOL:${USE_TINYUSB}>:src/tusb/usb_descriptors.c>
-    src/audio_synth.c
+    $<$<BOOL:${USE_AUDIO}>:src/sample_device_i2s.c>
+    $<$<AND:$<BOOL:${USE_AUDIO}>,$<STREQUAL:${DEVICE_MODEL},stm32f429>>:src/sample_device_dac.c>
     src/debounce.c
 )
 
@@ -333,15 +309,17 @@ if(PLATFORM_HOSTED)
 add_pc_executable(catalyst
   SOURCE
     ${APP_SOURCE_COMMON}
+    ${APP_SOURCE_BUILD_HOSTED}
 )
 
 target_link_libraries(catalyst
   PRIVATE
-    $<$<BOOL:${USE_FILESYSTEM}>:evfs>
     freertos
     pthread
     cstone
     heatshrink
+    $<$<BOOL:${USE_FILESYSTEM}>:evfs>
+    $<$<BOOL:${USE_AUDIO}>:SDL2>
 )
 
 target_include_directories(catalyst
@@ -349,6 +327,7 @@ target_include_directories(catalyst
     "include"
     "${CMAKE_BINARY_DIR}/include"
     "${CMAKE_BINARY_DIR}/template"
+    $<$<BOOL:${USE_AUDIO}>:${SDL2_INCLUDE_DIRS}>
 )
 
 endif(PLATFORM_HOSTED)

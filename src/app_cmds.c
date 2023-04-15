@@ -40,7 +40,9 @@
 #include "cstone/iqueue_int16_t.h"
 #if USE_AUDIO
 #  include "cstone/umsg.h"
+#  include "sample_device.h"
 #  include "audio_synth.h"
+#  include "cstone/sequence_events.h"
 #endif
 
 #ifdef USE_CRON
@@ -86,6 +88,43 @@ static void key__input_redirect(Console *con, KeyCode key_code, void *eval_ctx) 
   } else if(key_code == CH_CTRL_C) {
     shell_cancel_redirect(&con->shell);
   }
+}
+
+
+static int32_t cmd_sequence(uint8_t argc, char *argv[], void *eval_ctx) {
+  GetoptState state = {.report_errors = true};
+  int c;
+
+  const char *id = NULL;
+
+  while((c = getopt_r(argv, "i:h", &state)) != -1) {
+    switch(c) {
+    case 'i': id = state.optarg; break;
+
+    case 'h':
+      puts("SEQuence [-i] <id>  [-h]");
+      return 0;
+      break;
+
+    default:
+    case ':':
+    case '?':
+      return -3;
+      break;
+    }
+  }
+
+  if(id) {
+    uint32_t prop_id = prop_parse_any(id);
+    if(prop_id == 0) {
+      printf("Invalid ID: %s\n", id);
+      return -4;
+    }
+
+    sequence_start(prop_id, 1);
+  }
+
+  return 0;
 }
 
 
@@ -567,6 +606,7 @@ const ConsoleCommandDef g_app_cmd_set[] = {
 #if USE_AUDIO
   CMD_DEF("audio",    cmd_audio,      "Sound control"),
   CMD_DEF("key",      cmd_key,        "Play key"),
+  CMD_DEF("SEQuence", cmd_sequence,   "Play sequence"),
 #endif
   CMD_DEF("PROFile",  cmd_profile,    "Profile stats"),
 #ifdef PLATFORM_STM32F4

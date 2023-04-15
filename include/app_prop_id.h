@@ -3,13 +3,19 @@
 
 #define PROP_LIST_APP(M) \
 \
+M(P1, INSTRUMENT, 60) \
+\
 M(P2, AUDIO,     60) \
 M(P2, KEY,       61) \
+M(P2, BEEP,      62) \
+M(P2, SEQUENCE,  63) \
 M(P2, VALVE,     70) \
 M(P2, ZONE,      71) \
 \
-M(P3, INST0,  60) \
-M(P3, USER,   61) \
+M(P3, INST0,    60) \
+M(P3, USER,     61) \
+M(P3, PRESS,    62) \
+M(P3, RELEASE,  63) \
 \
 M(P4, FREQ,     60) \
 M(P4, WAVE,     61) \
@@ -41,5 +47,16 @@ enum PropElementsApp {
 #define P_EVENT_BUTTON_USER_PRESS   (P1_EVENT | P2_BUTTON | P3_USER | P4_PRESS)
 #define P_EVENT_BUTTON_USER_RELEASE (P1_EVENT | P2_BUTTON | P3_USER | P4_RELEASE)
 
+#define P_ERROR_BEEP_INFO_TIMEOUT (P1_ERROR | P2_BEEP | P3_INFO | P4_TIMEOUT)
+
+#define P_INSTRUMENT_n_PRESS_m    (P1_INSTRUMENT | P1_ARR(0) | P3_PRESS | P3_ARR(0))
+#define P_INSTRUMENT_n_RELEASE_m  (P1_INSTRUMENT | P1_ARR(0) | P3_RELEASE | P3_ARR(0))
+
+#define INST_UI     0
+#define INST_WARN   1
+#define INST_ERROR  2
+#define INST_FAULT  3
+
+#define P_APP_SEQUENCE_n_ON       (P1_APP | P2_SEQUENCE | P2_ARR(0) | P4_ON)
 
 #endif // APP_PROP_ID_H

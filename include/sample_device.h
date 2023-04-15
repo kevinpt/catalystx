@@ -23,8 +23,10 @@ typedef struct {
   int16_t  *dma_buf_high;
   unsigned  half_buf_samples;
   uint8_t   channels;
+#ifdef PLATFORM_EMBEDDED
   DMA_TypeDef *DMA_periph;
   uint32_t  DMA_stream;
+#endif
 
   SampleDevOutput sample_out;
   SampleDevEnable enable;

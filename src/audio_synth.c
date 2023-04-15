@@ -7,6 +7,7 @@
 
 #include "cstone/debug.h"
 #include "cstone/iqueue_int16_t.h"
+#include "sample_device.h"
 #include "audio_synth.h"
 #include "util/random.h"
 #include "util/intmath.h"
@@ -15,6 +16,10 @@
 #ifdef PROFILE_AUDIO
 #  include "cstone/profile.h"
 static uint32_t s_prof_id;
+#endif
+
+#ifndef COUNT_OF
+#  define COUNT_OF(a) (sizeof(a) / sizeof(*(a)))
 #endif
 
 
@@ -78,6 +83,14 @@ static uint16_t octave_scale(int16_t n, int16_t scale) {
 // Compute scale argument for :c:func:`octave_scale`
 // Result in Q0.15 format
 int16_t frequency_scale_factor(uint16_t ref_freq, uint16_t peak_freq) {
+#if 0
+  puts("## FSF:");
+  int16_t peak_log = log2_fixed(peak_freq, 0);
+  printf("## Peak log2(%d) = %d\n", peak_freq, peak_log);
+  int16_t ref_log = log2_fixed(ref_freq, 0);
+  printf("## Ref log2 = %d\n", ref_log);
+  return peak_log - ref_log;
+#endif
   return log2_fixed(peak_freq, 0) - log2_fixed(ref_freq, 0);
 }
 
@@ -97,9 +110,10 @@ void synth_init(SynthState *synth, uint32_t sample_rate, size_t queue_size) {
 
   synth->attenuation = (int32_t)INT16_MAX * 1 / 3;
 
+  // FIXME: Just zero init all instruments
   SynthVoiceCfg voice_cfg = {
     .osc_freq = 0,
-    .osc_kind = OSC_SINE,
+    .osc_kind = OSC_NONE,
 
     .lfo_freq = 0,
     .lfo_kind = OSC_SINE,
@@ -120,9 +134,9 @@ void synth_init(SynthState *synth, uint32_t sample_rate, size_t queue_size) {
     synth_instrument_init(synth, i, &voice_cfg);
   }
 
-  for(int i = 0; i < SYNTH_MAX_KEYS; i++) {
-    synth->key_voices[i] = -1;
-  }
+//  for(int i = 0; i < SYNTH_MAX_KEYS; i++) {
+//    synth->key_voices[i] = -1;
+//  }
 
 #ifdef PROFILE_AUDIO
   s_prof_id = profile_add(0, "synth spline");
@@ -132,6 +146,11 @@ void synth_init(SynthState *synth, uint32_t sample_rate, size_t queue_size) {
 
 void synth_set_marker(SynthState *synth, bool enable) {
   synth->marker = enable;
+}
+
+
+static inline int instrument_index(int inst) {
+  return inst >= SYNTH_MAX_INSTRUMENTS || inst < 0 ? 0 : inst;
 }
 
 
@@ -148,13 +167,15 @@ void synth_set_freq(SynthState *synth, int voice, uint32_t frequency) {
   vox->osc.frequency = frequency / 4;
 }
 
-void synth_set_waveform(SynthState *synth, int voice, OscKind kind) {
-  SynthVoiceCfg *vox = &synth->instruments[voice]; //&synth->voices[voice];
+void synth_set_waveform(SynthState *synth, int inst, OscKind kind) {
+  inst = instrument_index(inst);
+  SynthVoiceCfg *vox = &synth->instruments[inst];
   vox->osc_kind = kind;
 }
 
-void synth_set_adsr_curve(SynthState *synth, int voice, ADSRCurve curve) {
-  SynthVoiceCfg *vox = &synth->instruments[voice]; //&synth->voices[voice];
+void synth_set_adsr_curve(SynthState *synth, int inst, ADSRCurve curve) {
+  inst = instrument_index(inst);
+  SynthVoiceCfg *vox = &synth->instruments[inst];
   vox->adsr.curve = curve;
 
 }
@@ -259,6 +280,9 @@ int16_t oscillator_step_output(SynthOscillator *osc, uint32_t increment) {
   quadrant = osc->ddfs.count >> (32 - 2); // Upper 2 bits are quadrant
 
   switch(osc->kind) {
+  case OSC_NONE:
+    break;
+
   case OSC_SINE:
     {
       /*      __          __                         _
@@ -454,7 +478,7 @@ size_t synth_gen_samples(SynthState *synth, size_t gen_count) {
   }
 
   if(synth->voice_state == VOICES_IDLE) { // Let queue drain remaining samples
-    DPRINT("0 voices, q_count: %u", (unsigned)q_count);
+    //DPRINT("0 voices, q_count: %u", (unsigned)q_count);
     return q_count;
   }
 
@@ -525,27 +549,52 @@ size_t synth_gen_samples(SynthState *synth, size_t gen_count) {
 
 
 
-void synth_instrument_init(SynthState *synth, int instrument, SynthVoiceCfg *cfg) {
-  memcpy(&synth->instruments[instrument], cfg, sizeof *cfg);
+void synth_instrument_init(SynthState *synth, int inst, SynthVoiceCfg *cfg) {
+  inst = instrument_index(inst);
+  memcpy(&synth->instruments[inst], cfg, sizeof *cfg);
+}
+
+
+int synth_instrument_add(SynthState *synth, SynthVoiceCfg *cfg) {
+  // Find unused instrument
+  int inst = -1;
+  for(int i = 0; i < SYNTH_MAX_INSTRUMENTS; i++) {
+    if(synth->instruments[i].osc_kind == OSC_NONE) {
+      inst = i;
+      break;
+    }
+  }
+
+  if(inst < 0)
+    return inst;
+
+  synth_instrument_init(synth, inst, cfg);
+  return inst;
 }
 
 
 // MIDI note frequencies scaled by 4
 static uint16_t s_midi_notes[] = {
-33,     35,     37,     39,     41,     44,     46,     49,     52,     55,
-58,     62,     65,     69,     73,     78,     82,     87,     93,     98,
-104,    110,    117,    123,    131,    139,    147,    156,    165,    175,
-185,    196,    208,    220,    233,    247,    262,    277,    294,    311,
-330,    349,    370,    392,    415,    440,    466,    494,    523,    554,
-587,    622,    659,    698,    740,    784,    831,    880,    932,    988,
-1047,   1109,   1175,   1245,   1319,   1397,   1480,   1568,   1661,   1760,
-1865,   1976,   2093,   2217,   2349,   2489,   2637,   2794,   2960,   3136,
-3322,   3520,   3729,   3951,   4186,   4435,   4699,   4978,   5274,   5588,
-5920,   6272,   6645,   7040,   7459,   7902,   8372,   8870,   9397,   9956,
-10548,  11175,  11840,  12544,  13290,  14080,  14917,  15804,  16744,  17740,
-18795,  19912,  21096,  22351,  23680,  25088,  26580,  28160,  29834,  31609,
+
+// C    C#      D       D#      E       F       F#      G       G#      A       A#      B
+33,     35,     37,     39,     41,     44,     46,     49,     52,     55,     58,     62,
+65,     69,     73,     78,     82,     87,     93,     98,     104,    110,    117,    123,
+131,    139,    147,    156,    165,    175,    185,    196,    208,    220,    233,    247,
+262,    277,    294,    311,    330,    349,    370,    392,    415,    440,    466,    494,
+523,    554,    587,    622,    659,    698,    740,    784,    831,    880,    932,    988,
+1047,   1109,   1175,   1245,   1319,   1397,   1480,   1568,   1661,   1760,   1865,   1976,
+2093,   2217,   2349,   2489,   2637,   2794,   2960,   3136,   3322,   3520,   3729,   3951,
+4186,   4435,   4699,   4978,   5274,   5588,   5920,   6272,   6645,   7040,   7459,   7902,
+8372,   8870,   9397,   9956,   10548,  11175,  11840,  12544,  13290,  14080,  14917,  15804,
+16744,  17740,  18795,  19912,  21096,  22351,  23680,  25088,  26580,  28160,  29834,  31609,
 33488,  35479,  37589,  39824,  42192,  44701,  47359,  50175
 };
+
+
+// MIDI note frequency in Q14.2 fixed-point format
+uint16_t midi_note_freq(uint16_t note_ix) {
+  return note_ix < COUNT_OF(s_midi_notes) ? s_midi_notes[note_ix] : 0;
+}
 
 
 static int8_t synth__find_free_voice(SynthState *synth) {
@@ -559,39 +608,66 @@ static int8_t synth__find_free_voice(SynthState *synth) {
   }
 
   // Either this is a free voice or we've exhausted the list and this is the next to takeover
-  SynthVoice *vox = &synth->voices[vi];
-  synth->key_voices[vox->key] = -1;
+//  SynthVoice *vox = &synth->voices[vi];
+//  synth->key_voices[vox->key] = -1;
 
   return vi;
 }
 
 
-static SynthVoice *synth__find_voice(SynthState *synth, uint8_t key, uint8_t instrument) {
+/*static SynthVoice *synth__find_voice(SynthState *synth, uint8_t key, uint8_t inst) {*/
+/*  for(int i = 0; i < SYNTH_MAX_VOICES; i++) {*/
+/*    if(synth->voices[i].key == key && synth->voices[i].instrument == inst)*/
+/*      return &synth->voices[i];*/
+/*  }*/
+
+/*  return NULL;*/
+/*}*/
+
+static int synth__find_voice_index(SynthState *synth, uint8_t key, uint8_t inst, bool active_only) {
+  // Find a voice with matching key and instrument
   for(int i = 0; i < SYNTH_MAX_VOICES; i++) {
-    if(synth->voices[i].key == key && synth->voices[i].instrument == instrument)
-      return &synth->voices[i];
+    if(synth->voices[i].key == key && synth->voices[i].instrument == inst) {
+      if(active_only) {
+        if(synth->voices[i].adsr.gate == true)
+          return i;
+
+      } else {
+        //return i;
+      }
+    }
   }
 
-  return NULL;
+  return -1; // No matching voice found
 }
 
 
-void synth_press_key(SynthState *synth, uint8_t key, int instrument) {
-  DPRINT("PRESS: %d %d", key, instrument);
+
+void synth_press_key(SynthState *synth, uint8_t key, int inst) {
+  DPRINT("PRESS: %d %d", key, inst);
   // Check if voice is already playing
-  SynthVoice *vox = synth__find_voice(synth, key, instrument);
-
-  if(!vox)
-    synth_add_voice(synth, key, instrument);
-  else
-    vox->adsr.gate = true;
+  //SynthVoice *vox = synth__find_voice(synth, key, inst);
+  int vi = synth__find_voice_index(synth, key, inst, /*active_only*/ false);
+  if(vi < 0)
+    synth_add_voice(synth, key, inst);
+  else {
+    DPRINT("  Gate on voice=%d", vi);
+    synth->voices[vi].adsr.gate = true;
+  }
 }
 
-void synth_release_key(SynthState *synth, uint8_t key) {
-  DPRINT("RELEASE: %d", key);
+void synth_release_key(SynthState *synth, uint8_t key, int inst) {
+  DPRINT("RELEASE: %d %d", key, inst);
+
+#if 0
   int8_t vi = synth->key_voices[key];
+#else
+  // Find voice with this key/inst pair
+  int8_t vi = synth__find_voice_index(synth, key, inst, /*active_only*/ true);
+#endif
   if(vi < 0)
     return;
+
 
   SynthVoice *vox = &synth->voices[vi];
   vox->adsr.gate = false;
@@ -600,17 +676,17 @@ void synth_release_key(SynthState *synth, uint8_t key) {
 
 
 
-SynthVoice *synth_add_voice(SynthState *synth, uint8_t key, int instrument) {
+SynthVoice *synth_add_voice(SynthState *synth, uint8_t key, int inst) {
   uint8_t vi = synth__find_free_voice(synth);
   SynthVoice *vox = &synth->voices[vi];
 
-  synth_voice_init(synth, vi, &synth->instruments[instrument]);
+  synth_voice_init(synth, vi, &synth->instruments[inst]);
   vox->key = key;
-  vox->instrument = instrument;
+  vox->instrument = inst;
 
   // Configure oscillator frequency to match key
-  synth->key_voices[key] = vi;
-  DPRINT("Add voice: key=%d voice=%d freq=%d\n", key, vi, s_midi_notes[key] / 4);
+//  synth->key_voices[key] = vi;
+  DPRINT("Add voice: key=%d inst=%d voice=%d freq=%d\n", key, inst, vi, s_midi_notes[key] / 4);
   synth_set_freq(synth, vi, s_midi_notes[key]);
 
 //  // Scale LFO frequency modulation
@@ -621,7 +697,8 @@ SynthVoice *synth_add_voice(SynthState *synth, uint8_t key, int instrument) {
   vox->lfo.ddfs.count = random_next32(&s_audio_prng);
 
   // Start envelope
-  vox->adsr.gate = true;
+  vox->adsr.prev_gate = 0;
+  vox->adsr.gate = 1;
 
   synth->next_voice = vi + 1;
   if(synth->next_voice >= SYNTH_MAX_VOICES)
@@ -837,7 +914,7 @@ int16_t adsr_step_output(SynthADSR *adsr, uint32_t now) {
   case ADSR_IDLE:
     if(gate_on) {
       next_state = ADSR_ATTACK;
-      printf("A %" PRIu32 "\t%d\n", now, adsr->output);
+//      printf("A %" PRIu32 "\t%d\n", now, adsr->output);
     }
     break;
 
@@ -852,10 +929,12 @@ int16_t adsr_step_output(SynthADSR *adsr, uint32_t now) {
       // Skip decay if it should already be finished
       next_state = (overtime >= (int32_t)adsr->cfg.decay) ? ADSR_SUSTAIN : ADSR_DECAY;
 
+#if 0
       if(next_state == ADSR_SUSTAIN)
         printf("S* %" PRIu32 "\t%d\n", now, adsr->output);
       else
         printf("D %" PRIu32 "\t%d\n", now, adsr->output);
+#endif
     }
     break;
 
@@ -867,7 +946,7 @@ int16_t adsr_step_output(SynthADSR *adsr, uint32_t now) {
     } else if(elapsed >= (int32_t)adsr->cfg.decay) {
       overtime = elapsed - (int32_t)adsr->cfg.decay;
       next_state = ADSR_SUSTAIN;
-      printf("S %" PRIu32 "\t%d\n", now, adsr->output);
+//      printf("S %" PRIu32 "\t%d\n", now, adsr->output);
     }
     break;
 
@@ -875,14 +954,14 @@ int16_t adsr_step_output(SynthADSR *adsr, uint32_t now) {
     if(!gate_on) {
       next_state = ADSR_RELEASE;
       adsr->release_start_level = adsr->cfg.sustain;
-      printf("R %" PRIu32 "\t%d\n", now, adsr->output);
+//      printf("R %" PRIu32 "\t%d\n", now, adsr->output);
     }
     break;
 
   case ADSR_RELEASE:
     if(elapsed >= (int32_t)adsr->cfg.release) {
       next_state = ADSR_IDLE;
-      printf("I %" PRIu32 "\t%d\n", now, adsr->output);
+//      printf("I %" PRIu32 "\t%d\n", now, adsr->output);
     }
     break;
 
@@ -894,7 +973,7 @@ int16_t adsr_step_output(SynthADSR *adsr, uint32_t now) {
   }
 
 
-  uint16_t x;
+  uint16_t x = 0;
 
   switch(next_state) {
   case ADSR_IDLE:     envelope = 0; break;
@@ -966,3 +1045,51 @@ int16_t adsr_step_output(SynthADSR *adsr, uint32_t now) {
 
   return envelope;
 }
+
+#if 1
+// Update sample device based on latest synthesizer state
+bool update_sample_dev_state(SampleDevice *sdev, SynthState *audio_synth) {
+  /*
+  The synth has no active voices so we can disable the DMA to save on processor load.
+  We need to fill the DMA buffer with 0-samples before disabling DMA. This will ensure
+  we don't get garbage playback or speaker pops when something is sequenced wrong. At
+  this point all voices are idle so this invocation will generate a half buffer of 0's.
+  We need to keep DMA running for one more cycle to generate the second half. Then we
+  can invoke the SDEV_OP_SHUTDOWN_END command to terminate DMA after our first half
+  buffer of 0's has been partially sent.
+
+  Note that when the DMA is disabled by SDEV_OP_SHUTDOWN_END it will trigger a TC
+  interrupt one last time to indicate end of transfer. That will cause a third
+  invocation of this function.
+  */
+
+  if(audio_synth->voice_state == VOICES_IDLE) {
+    //DPRINT("IDLE VOICES %p state=%d", sdev, sdev->state);
+    switch(sdev->state) {
+    case SDEV_ACTIVE:
+      //DPRINT("ACTIVE-> SHUTDOWN");
+      sdev_ctl(sdev, SDEV_OP_DEACTIVATE, NULL, 0);
+      // Continue to 0-fill first half of buffer
+      break;
+    case SDEV_SHUTDOWN:
+      //DPRINT("SHUTDOWN -> END");
+      sdev_ctl(sdev, SDEV_OP_SHUTDOWN_END, NULL, 0);
+      // Continue to 0-fill second half of buffer
+      break;
+    case SDEV_INACTIVE:
+      // Third invocation caused by DMA end of transfer
+      //DPRINT("INACTIVE");
+      return false; // Abort output function; nothing to do
+      break;
+    default:
+      DPRINT("INVALID !!!");
+      sdev->state = SDEV_ACTIVE;
+      sdev_ctl(sdev, SDEV_OP_DEACTIVATE, NULL, 0);
+      break;
+    }
+  }
+
+  return true;
+}
+#endif
+

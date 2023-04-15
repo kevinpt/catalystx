@@ -9,8 +9,8 @@
 
 #ifdef PLATFORM_EMBEDDED
 #  include "stm32f4xx_hal.h"
-//#  include "stm32f4xx_ll_dma.h"
-//#  include "stm32f4xx_ll_spi.h"
+#  include "stm32f4xx_ll_tim.h"
+#  include "stm32f4xx_ll_exti.h"
 
 #  include "FreeRTOS.h"
 #  include "semphr.h"
@@ -26,6 +26,7 @@
 #include "cstone/rtos.h"
 #include "cstone/led_blink.h"
 #include "cstone/debug.h"
+#include "cstone/sequence_events.h"
 #ifdef USE_CRON
 #  include "cstone/prop_db.h"
 #  include "cstone/cron_events.h"
@@ -38,10 +39,13 @@
 #  include "debounce.h"
 #endif
 
-#if defined PLATFORM_EMBEDDED && USE_AUDIO
-#  include "audio_synth.h"
+#if USE_AUDIO
 #  include "sample_device.h"
+#  include "audio_synth.h"
 #endif
+
+#include "app_prop_id.h"
+#include "buzzer.h"
 
 #ifndef COUNT_OF
 #  define COUNT_OF(a) (sizeof(a) / sizeof(*(a)))
@@ -121,3 +125,253 @@ void audio_tasks_init(void) {
 }
 
 #endif // USE_AUDIO
+
+
+
+/*
+
+** Buzzer generated on PC-8500:
+           4kHz                              4kHz
+____-_-_-_-_-_-_-_-_-_________________-_-_-_-_-_-_-_-_-____________________________
+
+    |      60ms      |      60ms      |      60ms      |      60ms      |
+
+
+    |<-- pin interrupt                |<-- pin interrupt
+
+    |<-- Start timer; Disable pin interrupt
+    |        65ms        |<-- Reenable pin interrupt
+                                      |<-- Restart timer; Disable int.
+                                      |         65ms         |<-- Reenable pin interrupt
+                                      |                125ms               |<-- Counter timeout; End timer
+
+** Event generation:
+
+    | Beep 1
+                                      | Beep 2
+                                                                           | Beep end
+
+
+The PC-8500 will beep at 4kHz for 1, 2, 4, or 5+ times. 1 is for normal UI feedback.
+2, 4, and 5+ are for increasingly severe warnings/errors. Beeps are always 60ms on
+followed by 60ms off.
+
+We need to track beeps as they arrive and generate events so that acoustic sound
+can be generated with minimal delay.
+
+Algorithm:
+  Wait for rising edge pin interrupt triggered by buzzer start. When the pin triggers,
+  disable the pin interrupt and start the timer counting with a 125ms timeout. An
+  output compare is set for 65ms to renable the pin interrupt after the initial 4kHz
+  pulse train. If another edge happens before the 125ms count expires, we reinitialize
+  the counter and disable the pin interrupt for 65ms as before. If the 125ms count
+  expires, the buzzer has ended.
+
+  The interrupt handlers for pin change and the timer send command bytes over a queue
+  that buzzer_task() waits to receive from.
+*/
+
+
+static void process_beep(uint8_t beep_count) {
+  switch(beep_count) {
+  case 1:
+    //sequence_start(P_APP_SEQUENCE_UI, 1);
+    break;
+  case 2:
+    sequence_start(P_APP_SEQUENCE_WARN, 1);
+    break;
+  case 4:
+    break;
+  default:
+    if(beep_count >= 5) {
+    
+    }
+    break;
+  }
+}
+
+
+TaskHandle_t g_buzzer_task;
+
+// TASK: Receive commands from interrupt handlers managing buzzer input pin
+static void buzzer_task(void *ctx) {
+  uint8_t beep_count = 0;
+
+  while(1) {
+    // Woken by commands on queue sent by ISRs
+
+    uint8_t cmd;
+    if(xQueueReceive(g_buzzer_cmd_q, &cmd, pdMS_TO_TICKS(250)) == pdTRUE) {
+      switch(cmd) {
+      case BUZZ_CMD_PIN_CHANGE:
+//        puts("Pin change");
+        beep_count++;
+        if(beep_count <= 5) // Ignore additional beeps after 5 have arrived
+          process_beep(beep_count);
+        break;
+      case BUZZ_CMD_65MS_TIMEOUT:
+        //puts("65ms");
+        break;
+      case BUZZ_CMD_125MS_TIMEOUT:
+//        printf("Beep end: %d\n", beep_count);
+        beep_count = 0;
+        break;
+      default:
+        break;
+      }
+
+    } else { // Queue timeout
+      // Guard against lost 125ms timeout command if queue ever overflows
+      if(beep_count > 0)  // Queue has lost a command
+        report_error(P_ERROR_BEEP_INFO_TIMEOUT, 0);
+
+      beep_count = 0;
+    }
+  }
+}
+
+
+#if 0
+#define NOTE_G4  MIDI_NOTE(MIDI_G, 4)
+#define NOTE_E5  MIDI_NOTE(MIDI_E, 5)
+#define NOTE_C5  MIDI_NOTE(MIDI_C, 5)
+
+
+#define NOTE_G5  MIDI_NOTE(MIDI_G, 5)
+#define NOTE_E6  MIDI_NOTE(MIDI_E, 6)
+#define NOTE_C6  MIDI_NOTE(MIDI_C, 6)
+
+#define NOTE_Fs6 MIDI_NOTE(MIDI_Fs, 6)
+#define NOTE_G6  MIDI_NOTE(MIDI_G, 6)
+#define NOTE_As6 MIDI_NOTE(MIDI_As, 6)
+#define NOTE_B6  MIDI_NOTE(MIDI_B, 6)
+
+
+#define NOTE_C7  MIDI_NOTE(MIDI_C, 7)
+#define NOTE_D7  MIDI_NOTE(MIDI_D, 7)
+#define NOTE_E7  MIDI_NOTE(MIDI_E, 7)
+#define NOTE_F7  MIDI_NOTE(MIDI_F, 7)
+#define NOTE_G7  MIDI_NOTE(MIDI_G, 7)
+#define NOTE_A7  MIDI_NOTE(MIDI_A, 7)
+#define NOTE_B7  MIDI_NOTE(MIDI_B, 7)
+#endif
+
+#define SONG_BPM    160
+#define MS_PER_BEAT (1000ul * 60 / SONG_BPM)
+#define QTR_NOTE    120
+#define HALF_NOTE   (QTR_NOTE * 2)
+#define WHOLE_NOTE  (QTR_NOTE * 4)
+
+
+#define INST_PRESS(inst, note, delay, hold) \
+  {{P_INSTRUMENT_n_PRESS_m   | P1_ARR(inst) | P3_ARR(note), (delay)}, \
+   {P_INSTRUMENT_n_RELEASE_m | P1_ARR(inst) | P3_ARR(note), (hold)}}
+
+
+// INST. PRESS, prev note delay, INST. RELEASE, press duration
+static SequenceEventPair s_seq_data_ui[] = {
+  INST_PRESS(INST_UI, NOTE_G4, 0,   100),
+  INST_PRESS(INST_UI, NOTE_E5, 200, 100),
+  INST_PRESS(INST_UI, NOTE_C5, 200, 100)
+#if 0
+  {{P_INSTRUMENT_n_PRESS_m | P1_ARR(INST_UI) | P3_ARR(NOTE_G5), 0},
+      {P_INSTRUMENT_n_RELEASE_m | P1_ARR(INST_UI) | P3_ARR(NOTE_G5), 100}},
+  {{P_INSTRUMENT_n_PRESS_m | P1_ARR(INST_UI) | P3_ARR(NOTE_E6), 200},
+      {P_INSTRUMENT_n_RELEASE_m | P1_ARR(INST_UI) | P3_ARR(NOTE_E6), 100}},
+  {{P_INSTRUMENT_n_PRESS_m | P1_ARR(INST_UI) | P3_ARR(NOTE_C6), 200},
+      {P_INSTRUMENT_n_RELEASE_m | P1_ARR(INST_UI) | P3_ARR(NOTE_C6), 100}}
+#endif
+//  {{P_INSTRUMENT_n_PRESS_m | P1_ARR(1) | P3_ARR(NOTE_E3), 700}, {P_INSTRUMENT_n_RELEASE_m | P1_ARR(1) | P3_ARR(NOTE_E3), 1500}}
+};
+Sequence g_seq_ui;
+
+static SequenceEventPair s_seq_data_warn[] = {
+  INST_PRESS(INST_WARN, NOTE_C7, 0,   100),
+  INST_PRESS(INST_WARN, NOTE_C7, 400, 100),
+  INST_PRESS(INST_WARN, NOTE_C7, 1000, 100)
+};
+Sequence g_seq_warn;
+
+
+static SequenceEventPair s_seq_data_error[] = {
+#if 0
+  INST_PRESS(INST_WARN, NOTE_B5,  0,   100),
+  INST_PRESS(INST_WARN, NOTE_As5, 0,   100),
+  INST_PRESS(INST_WARN, NOTE_G5,  150, 100)
+  INST_PRESS(INST_WARN, NOTE_Fs5, 0,   100)
+#endif
+  INST_PRESS(INST_UI, NOTE_C7, 0, 200),
+  INST_PRESS(INST_UI, NOTE_C6, 400, 200),
+  INST_PRESS(INST_UI, NOTE_C5, 400, 200),
+  INST_PRESS(INST_UI, NOTE_C4, 400, 200),
+  INST_PRESS(INST_UI, NOTE_C3, 400, 200),
+  INST_PRESS(INST_UI, NOTE_C2, 400, 200),
+  INST_PRESS(INST_UI, NOTE_C1, 400, 200)
+};
+Sequence g_seq_error;
+
+
+
+
+#define INST_TWINKLE  INST_ERROR
+static SequenceEventPair s_seq_data_twinkle[] = {
+  INST_PRESS(INST_TWINKLE, NOTE_C5, 0,           QTR_NOTE),
+  INST_PRESS(INST_TWINKLE, NOTE_C5, MS_PER_BEAT, QTR_NOTE),
+  INST_PRESS(INST_TWINKLE, NOTE_G5, MS_PER_BEAT, QTR_NOTE),
+  INST_PRESS(INST_TWINKLE, NOTE_G5, MS_PER_BEAT, QTR_NOTE),
+
+  INST_PRESS(INST_TWINKLE, NOTE_A5, MS_PER_BEAT, QTR_NOTE),
+  INST_PRESS(INST_TWINKLE, NOTE_A5, MS_PER_BEAT, QTR_NOTE),
+  INST_PRESS(INST_TWINKLE, NOTE_G5, MS_PER_BEAT, HALF_NOTE),
+
+  INST_PRESS(INST_TWINKLE, NOTE_F5, 2*MS_PER_BEAT, QTR_NOTE),
+  INST_PRESS(INST_TWINKLE, NOTE_F5, MS_PER_BEAT, QTR_NOTE),
+  INST_PRESS(INST_TWINKLE, NOTE_E5, MS_PER_BEAT, QTR_NOTE),
+  INST_PRESS(INST_TWINKLE, NOTE_E5, MS_PER_BEAT, QTR_NOTE),
+
+  INST_PRESS(INST_TWINKLE, NOTE_D5, MS_PER_BEAT, QTR_NOTE),
+  INST_PRESS(INST_TWINKLE, NOTE_D5, MS_PER_BEAT, QTR_NOTE),
+  INST_PRESS(INST_TWINKLE, NOTE_C5, MS_PER_BEAT, HALF_NOTE)
+};
+Sequence g_seq_twinkle;
+
+
+
+
+QueueHandle_t g_buzzer_cmd_q = 0;
+
+void buzzer_task_init(void) {
+  // Sequences for beep patterns
+  if(sequence_init_pairs(&g_seq_ui, s_seq_data_ui, COUNT_OF(s_seq_data_ui), 1, NULL, P_APP_SEQUENCE_UI)) {
+    sequence_dump(&g_seq_ui);
+    sequence_add(&g_seq_ui);
+  }
+
+  if(sequence_init_pairs(&g_seq_warn, s_seq_data_warn, COUNT_OF(s_seq_data_warn),
+                          1, NULL, P_APP_SEQUENCE_WARN)) {
+//    sequence_dump(&g_seq_warn);
+    sequence_add(&g_seq_warn);
+  }
+
+  if(sequence_init_pairs(&g_seq_error, s_seq_data_error, COUNT_OF(s_seq_data_error),
+                          1, NULL, P_APP_SEQUENCE_ERROR)) {
+    sequence_dump(&g_seq_error);
+    sequence_add(&g_seq_error);
+  }
+
+  if(sequence_init_pairs(&g_seq_twinkle, s_seq_data_twinkle, COUNT_OF(s_seq_data_twinkle),
+                          1, NULL, 0)) {
+    sequence_dump(&g_seq_twinkle);
+    sequence_add(&g_seq_twinkle);
+  }
+
+
+  // Queue for interrupt handlers to communicate with task
+  g_buzzer_cmd_q = xQueueCreate(4, sizeof(uint8_t));
+
+  xTaskCreate(buzzer_task, "buzz", STACK_BYTES(1024),
+              NULL, TASK_PRIO_LOW, &g_buzzer_task);
+
+}
+
+

@@ -3,7 +3,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "stm32f4xx_ll_dac.h"
+#include "lib_cfg/build_config.h"
+#include "cstone/platform.h"
+
+#ifdef PLATFORM_STM32
+#  include "stm32f4xx_ll_dac.h"
+#endif
 
 #include "cstone/debug.h"
 
@@ -23,7 +28,7 @@ unsigned sdev_sample_out(SampleDevice *sdev, int16_t *buf) {
 
 
 bool sdev_ctl(SampleDevice *sdev, int op, void *data, size_t data_len) {
-  DPRINT("OP: 0x%02X", op);
+  //DPRINT("OP: 0x%02X", op);
   switch(op) {
   case SDEV_OP_ACTIVATE:
     sdev->state = SDEV_ACTIVE;
@@ -36,6 +41,7 @@ bool sdev_ctl(SampleDevice *sdev, int op, void *data, size_t data_len) {
   case SDEV_OP_SHUTDOWN_END:
     if(sdev->state == SDEV_SHUTDOWN) {
       sdev->state = SDEV_INACTIVE;
+      //DPRINT("Disable audio !!!");
       sdev->cfg.enable(sdev, false);
     }
     break;
@@ -45,13 +51,6 @@ bool sdev_ctl(SampleDevice *sdev, int op, void *data, size_t data_len) {
 
   return true;
 }
-
-
-
-
-
-
-
 
 
 

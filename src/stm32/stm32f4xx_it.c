@@ -14,8 +14,13 @@
 #endif
 #include "stm32f4xx_ll_dma.h"
 
+#include "stm32f4xx_ll_tim.h"
+#include "stm32f4xx_ll_exti.h"
+
+
 #include "FreeRTOS.h"
 #include "semphr.h"
+#include "queue.h"
 #include "task.h"
 
 
@@ -32,12 +37,13 @@
 #include "cstone/rtc_soft.h"
 #include "cstone/iqueue_int16_t.h"
 #ifdef USE_AUDIO
-#  include "audio_synth.h"
 #  include "sample_device.h"
+#  include "audio_synth.h"
 #  ifdef USE_AUDIO_DAC
 #    include "sample_device_dac.h"
 #  endif
 #endif
+#include "buzzer.h"
 
 #include "stm32/stm32_it.h"
 
@@ -326,4 +332,46 @@ void TIM3_IRQHandler(void) {
   }
 }
 
+
+void EXTI15_10_IRQHandler(void);
+void EXTI15_10_IRQHandler(void) {
+  BaseType_t high_prio_task;
+
+  LL_EXTI_DisableIT_0_31(LL_EXTI_LINE_12); // Don't want continuous ints. for 4kHz buzz
+  LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_12);
+
+  // For multiple beeps we need wait 65ms for next dead space between beeps before reenabling
+  // the pin EXTI. For the last beep we timeout after 125ms to confirm the end.
+  LL_TIM_SetCounter(BUZZ_TIMER, 0);
+  LL_TIM_EnableCounter(BUZZ_TIMER); // Start 125ms count
+
+  uint8_t cmd = BUZZ_CMD_PIN_CHANGE;
+  xQueueSendFromISR(g_buzzer_cmd_q, &cmd, &high_prio_task);
+  portYIELD_FROM_ISR(high_prio_task);
+}
+
+
+void TIM4_IRQHandler(void);
+void TIM4_IRQHandler(void) {
+  BaseType_t high_prio_task;
+
+  if(LL_TIM_IsActiveFlag_UPDATE(BUZZ_TIMER)) { // 125ms elapsed
+    LL_TIM_ClearFlag_UPDATE(BUZZ_TIMER);
+
+    LL_TIM_DisableCounter(BUZZ_TIMER); // Wait for next rising edge to resume counting
+
+    uint8_t cmd = BUZZ_CMD_125MS_TIMEOUT;
+    xQueueSendFromISR(g_buzzer_cmd_q, &cmd, &high_prio_task);
+    portYIELD_FROM_ISR(high_prio_task);
+
+  } else if(LL_TIM_IsActiveFlag_CC1(BUZZ_TIMER)) { // 65ms elapsed
+    LL_TIM_ClearFlag_CC1(BUZZ_TIMER);
+
+    LL_EXTI_EnableIT_0_31(LL_EXTI_LINE_12);
+
+    uint8_t cmd = BUZZ_CMD_65MS_TIMEOUT;
+    xQueueSendFromISR(g_buzzer_cmd_q, &cmd, &high_prio_task);
+    portYIELD_FROM_ISR(high_prio_task);
+  }
+}
 

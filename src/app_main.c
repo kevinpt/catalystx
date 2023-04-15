@@ -43,6 +43,7 @@
 #include "cstone/profile.h"
 #include "cstone/faults.h"
 #include "cstone/led_blink.h"
+#include "cstone/sequence_events.h"
 #include "cstone/umsg.h"
 #include "cstone/tasks_core.h"
 #include "cstone/prop_id.h"
@@ -99,21 +100,31 @@
 #include "util/random.h"
 #include "util/num_format.h"
 
-#if defined PLATFORM_EMBEDDED && USE_AUDIO
-#  include "audio_synth.h"
-#  include "sample_device.h"
-#  include "stm32f4xx_ll_dma.h"
 
-#  ifdef USE_AUDIO_I2S
-#    include "sample_device_i2s.h"
-#    include "i2s.h"
-#  endif
-#  ifdef USE_AUDIO_DAC
-#    include "stm32f4xx_ll_dac.h"
-#    include "sample_device_dac.h"
-#    include "dac.h"
+#if USE_AUDIO
+#  include "sample_device.h"
+#  include "audio_synth.h"
+
+#  if defined PLATFORM_EMBEDDED
+#    include "stm32f4xx_ll_dma.h"
+
+#    ifdef USE_AUDIO_I2S
+#      include "sample_device_i2s.h"
+#      include "i2s.h"
+#    endif
+#    ifdef USE_AUDIO_DAC
+#      include "stm32f4xx_ll_dac.h"
+#      include "sample_device_dac.h"
+#      include "dac.h"
+#    endif
+#  include "buzzer.h"
+
+#  else // Hosted
+#    include "SDL.h"
+#    include "sample_device_sdl.h"
 #  endif
 #endif
+
 
 
 #if defined PLATFORM_EMBEDDED
@@ -123,7 +134,7 @@ extern char _sivec, _eivec, _sflash1, _eflash1;
 extern char _sflash0, _eflash0;
 #  endif
 
-static const TraitDescriptor s_app_traits[] = {
+static const TraitDescriptor s_app_traits[] = { // FIXME: Replace with real data
   {1, 0, 42},
   {2, 0, 43}
 };
@@ -164,10 +175,12 @@ UMsgTarget  g_tgt_event_buttons;
 UMsgTarget  g_tgt_audio_ctl;
 SynthState  g_audio_synth;
 
-#  ifdef USE_AUDIO_I2S
+#  if defined USE_AUDIO_I2S
 SampleDeviceI2S s_dev_audio;
-#  else // DAC
+#  elif defined USE_AUDIO_DAC
 SampleDeviceDAC s_dev_audio;
+#  else // SDL
+SampleDeviceSDL s_dev_audio;
 #  endif
 SampleDevice *g_dev_audio = (SampleDevice *)&s_dev_audio;
 
@@ -180,6 +193,28 @@ _Alignas(int32_t)
 int16_t g_audio_buf[AUDIO_DMA_BUF_SAMPLES * AUDIO_DMA_BUF_CHANNELS];
 #endif
 
+
+static SequenceEvent s_song_notes[] = {
+  {P_EVENT_BUTTON_USER_PRESS, 1000},
+  {P_EVENT_BUTTON_USER_RELEASE, 2000}
+};
+
+Sequence g_song_seq;
+
+#define NOTE_G3  MIDI_NOTE(MIDI_G, 3)
+#define NOTE_E4  MIDI_NOTE(MIDI_E, 4)
+#define NOTE_C4  MIDI_NOTE(MIDI_C, 4)
+#define NOTE_E3  MIDI_NOTE(MIDI_E, 3)
+
+static SequenceEventPair s_song2[] = {
+  {{P_INSTRUMENT_n_PRESS_m | P1_ARR(0) | P3_ARR(NOTE_G3), 700}, {P_INSTRUMENT_n_RELEASE_m | P1_ARR(0) | P3_ARR(NOTE_G3), 500}},
+  {{P_INSTRUMENT_n_PRESS_m | P1_ARR(0) | P3_ARR(NOTE_E4), 700}, {P_INSTRUMENT_n_RELEASE_m | P1_ARR(0) | P3_ARR(NOTE_E4), 500}},
+  {{P_INSTRUMENT_n_PRESS_m | P1_ARR(0) | P3_ARR(NOTE_C4), 700}, {P_INSTRUMENT_n_RELEASE_m | P1_ARR(0) | P3_ARR(NOTE_C4), 500}},
+
+  {{P_INSTRUMENT_n_PRESS_m | P1_ARR(1) | P3_ARR(NOTE_E3), 700}, {P_INSTRUMENT_n_RELEASE_m | P1_ARR(1) | P3_ARR(NOTE_E3), 1500}}
+};
+
+Sequence g_song2;
 
 #if LOG_TO_RAM
 // Small in-memory database for testing
@@ -228,7 +263,7 @@ DEF_PIN(g_usb_oc,         GPIO_PORT_C, 5,   GPIO_PIN_INPUT);
 
 #  elif defined BOARD_STM32F401_BLACK_PILL
 DEF_PIN(g_led_heartbeat,  GPIO_PORT_C, 13,  GPIO_PIN_OUTPUT_H);
-
+//DEF_PIN(g_debug_seq,      GPIO_PORT_B, 14,  GPIO_PIN_OUTPUT_L);
 
 #  elif defined BOARD_MAPLE_MINI
 // Maple Mini STM32F103CBT
@@ -676,8 +711,10 @@ BCLK    6 G     CK    PB10    P2-48         B10
 LRCLK   7 O     WS    PB9     P1-20         B9
 */
 
+#ifdef BOARD_STM32F401_BLACK_PILL
 DEF_PIN(g_i2s_sd_mode,  GPIO_PORT_E, 3,  GPIO_PIN_OUTPUT_L);  // Shutdown not Serial Data
 DEF_PIN(g_i2s_gain,     GPIO_PORT_E, 1,  GPIO_PIN_OUTPUT_H);  // 3dB default
+#endif
 
 //DEF_PIN(g_i2s_ck,     GPIO_PORT_B, 10,  GPIO_PIN_OUTPUT_H);
 //DEF_PIN(g_i2s_sd,     GPIO_PORT_C, 3,  GPIO_PIN_OUTPUT_H);
@@ -729,12 +766,22 @@ static void audio_ctl_handler(UMsgTarget *tgt, UMsg *msg) {
     {
       // Check for key presses
       uint32_t id_masked = msg->id & ~PROP_MASK(3);
-      if(id_masked == P_EVENT_KEY_n_PRESS) {
+      if(id_masked == P_EVENT_KEY_n_PRESS) {  // FIXME remove this prop
         // Ensure an active voice is ready before activating the sample device
         synth_press_key(&g_audio_synth, PROP_FIELD(msg->id, 3), 0);
         sdev_ctl(g_dev_audio, SDEV_OP_ACTIVATE, NULL, 0);
       } else if(id_masked == P_EVENT_KEY_n_RELEASE) {
-        synth_release_key(&g_audio_synth, PROP_FIELD(msg->id, 3));
+        synth_release_key(&g_audio_synth, PROP_FIELD(msg->id, 3), 0);
+      }
+
+      id_masked = msg->id & ~(PROP_MASK(2) | PROP_MASK(4));
+      if(id_masked == P_INSTRUMENT_n_PRESS_m) {
+        // Ensure an active voice is ready before activating the sample device
+        // FIXME: Select instrument
+        synth_press_key(&g_audio_synth, PROP_FIELD(msg->id, 4), PROP_FIELD(msg->id, 2));
+        sdev_ctl(g_dev_audio, SDEV_OP_ACTIVATE, NULL, 0);
+      } else if(id_masked == P_INSTRUMENT_n_RELEASE_m) {
+        synth_release_key(&g_audio_synth, PROP_FIELD(msg->id, 4), PROP_FIELD(msg->id, 2));
       }
     }
     break;
@@ -851,10 +898,12 @@ static void portable_init(void) {
   umsg_tgt_add_filter(&g_tgt_audio_ctl, (P1_APP | P2_AUDIO | P3_MSK | P4_MSK));
   umsg_tgt_add_filter(&g_tgt_audio_ctl, (P1_EVENT| P2_BUTTON | P3_MSK | P4_MSK));
   umsg_tgt_add_filter(&g_tgt_audio_ctl, (P_EVENT_KEY_n_PRESS | P3_MSK | P4_MSK));
+  umsg_tgt_add_filter(&g_tgt_audio_ctl, (P_INSTRUMENT_n_PRESS_m | P2_MSK | P3_MSK | P4_MSK));
   umsg_hub_subscribe(&g_msg_hub, &g_tgt_audio_ctl);
 #endif
 
   // Any DB event messages sent before now were discarded because there wasn't a hub
+  DPRINT("Set msg hub  %p", &g_msg_hub);
   prop_db_set_msg_hub(&g_prop_db, (UMsgTarget *)&g_msg_hub);
   g_prop_db.persist_updated = false; // Clear flag set by any init code
 
@@ -867,6 +916,10 @@ static void portable_init(void) {
 #endif
 }
 
+
+static void end_sequence(Sequence *seq) {
+  printf("Sequence ended\n");
+}
 
 int main(void) {
 #ifdef PLATFORM_EMBEDDED
@@ -887,7 +940,12 @@ int main(void) {
   app_tasks_init();
 
 #if USE_AUDIO
-  synth_init(&g_audio_synth, AUDIO_SAMPLE_RATE, 260);
+#  if defined PLATFORM_EMBEDDED
+#    define AUDIO_QUEUE_SIZE  260
+#else
+#    define AUDIO_QUEUE_SIZE  2048
+#endif
+  synth_init(&g_audio_synth, AUDIO_SAMPLE_RATE, AUDIO_QUEUE_SIZE);
   //synth_set_marker(&g_audio_synth, /*enable*/ true);
 
 #  if defined USE_AUDIO_I2S
@@ -921,6 +979,13 @@ int main(void) {
   sdev_init_dac(&s_dev_audio, &dev_audio_cfg, &g_audio_synth, DAC1, LL_DAC_CHANNEL_1);
 
   dac_hw_init(&s_dev_audio);
+#  elif defined USE_AUDIO_SDL
+  SampleDeviceCfg dev_audio_cfg = {
+    .channels = 1,
+    .sample_out = sdl_synth_out, // Not used
+  };
+
+  sdev_init_sdl(&s_dev_audio, &dev_audio_cfg, &g_audio_synth);
 #  else
 #    error "No audio driver configured"  
 #  endif
@@ -929,19 +994,21 @@ int main(void) {
   // Configure synth instruments
   //uint16_t modulate_freq = frequency_scale_factor(880, 880+50);
 
+  // UI tone: Short sine chirp
+  uint16_t modulate_freq = frequency_scale_factor(660, 660+10);
   SynthVoiceCfg voice_cfg = {
     .osc_freq = 0,
-    .osc_kind = OSC_SINE,
+    .osc_kind = OSC_TRIANGLE,
 
     .lfo_freq = 0,
-    .lfo_kind = OSC_TRIANGLE,
+    .lfo_kind = OSC_NONE,
 
-    .adsr.attack  = 100,
-    .adsr.decay   = 500,
-    .adsr.sustain = 16000,
-    .adsr.release = 600,
+    .adsr.attack  = 50,
+    .adsr.decay   = 50,
+    .adsr.sustain = 2000,
+    .adsr.release = 100,
     .adsr.curve   = CURVE_SPLINE,
-    .adsr.spline_weight = INT16_MAX,
+    .adsr.spline_weight = -8192, //INT16_MAX,
 
     .lpf_cutoff_freq  = 1000,
     .modulate_freq    = 0, //modulate_freq,
@@ -949,10 +1016,78 @@ int main(void) {
     .modulate_cutoff  = 0
   };
 
-  synth_instrument_init(&g_audio_synth, 0, &voice_cfg);
+  synth_instrument_init(&g_audio_synth, INST_UI, &voice_cfg);
+
+  // Warning tone: Sustained sine with vibrato
+  modulate_freq = frequency_scale_factor(660, 660+50);
+  voice_cfg = (SynthVoiceCfg) {
+    .osc_freq = 0,
+    .osc_kind = OSC_SINE,
+
+    .lfo_freq = 40,
+    .lfo_kind = OSC_TRIANGLE,
+
+    .adsr.attack  = 100,
+    .adsr.decay   = 400,
+    .adsr.sustain = 16000,
+    .adsr.release = 800,
+    .adsr.curve   = CURVE_SPLINE,
+    .adsr.spline_weight = 0,
+
+    .lpf_cutoff_freq  = 1000,
+    .modulate_freq    = modulate_freq,
+    .modulate_amp     = 0, //INT16_MAX - 20000,
+    .modulate_cutoff  = 0
+  };
+
+  synth_instrument_init(&g_audio_synth, INST_WARN, &voice_cfg);
+
+
+  // Error tone
+  uint16_t modulate_center = midi_note_freq(NOTE_E5)/4;
+  modulate_freq = frequency_scale_factor(modulate_center, modulate_center + 20);
+  voice_cfg = (SynthVoiceCfg) {
+    .osc_freq = 0,
+    .osc_kind = OSC_SAWTOOTH,
+
+    .lfo_freq = 60,
+    .lfo_kind = OSC_SINE,
+
+    .adsr.attack  = 100,
+    .adsr.decay   = 500,
+    .adsr.sustain = 10000,
+    .adsr.release = 800,
+    .adsr.curve   = CURVE_SPLINE,
+    .adsr.spline_weight = 0, //INT16_MAX,
+
+    .lpf_cutoff_freq  = 1000,
+    .modulate_freq    = modulate_freq,
+    .modulate_amp     = 0, //INT16_MAX - 20000,
+    .modulate_cutoff  = 0
+  };
+
+  synth_instrument_init(&g_audio_synth, INST_ERROR, &voice_cfg);
+
+
 
   audio_tasks_init();
+
+
+  buzzer_task_init(); // Setup task and queue first so that EXTI won't cause race condition
+#  ifdef PLATFORM_EMBEDDED
+  buzzer_hw_init();
+#  endif
 #endif // USE_AUDIO
+
+
+  sequence_init(&g_song_seq, s_song_notes, COUNT_OF(s_song_notes), 6, end_sequence, 0);
+  sequence_add(&g_song_seq);
+
+  if(sequence_init_pairs(&g_song2, s_song2, COUNT_OF(s_song2), 2, NULL, 0)) {
+//    sequence_dump(&g_song2);
+    sequence_add(&g_song2);
+  }
+
 
 
 #ifdef PLATFORM_EMBEDDED
