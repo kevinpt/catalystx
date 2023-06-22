@@ -384,6 +384,7 @@ for new data after every half-buffer is consumed.
 #  endif // USE_AUDIO_DAC
 
 
+#  ifdef USE_AUDIO_I2S
 void i2s_hw_init(SampleDeviceI2S *sdev) {
 /*
 Setup hardware to enable otput via I2S. DAC samples are driven by a timer
@@ -606,7 +607,8 @@ RCC_PeriphCLKInitTypeDef i2s_clk_cfg = {
   LL_RCC_ConfigMCO(LL_RCC_MCO2SOURCE_PLLI2S, LL_RCC_MCO2_DIV_5);
 #endif
 }
-#endif
+#  endif // USE_AUDIO_I2S
+#endif // USE_AUDIO
 
 
 
