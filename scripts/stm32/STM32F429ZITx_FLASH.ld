@@ -13,7 +13,7 @@ _reserved_stack_size = 4K;
 
 /* Physical memory regions */
 MEMORY {
-  /* ISR Vector = ??? bytes */
+  /* ISR Vector = 428 bytes */
   ISR_VECTOR (rx) : ORIGIN = 0x8000000, LENGTH = 512
   METADATA   (r)  : ORIGIN = ORIGIN(ISR_VECTOR) + LENGTH(ISR_VECTOR), LENGTH = 256
   FLASH0     (rx) : ORIGIN = ORIGIN(METADATA) + LENGTH(METADATA),
@@ -37,9 +37,18 @@ SECTIONS {
   /* Vector table goes first */
   .isr_vector : {
     . = ALIGN(4);
+    _sivec = .;
     KEEP(*(.isr_vector))
     . = ALIGN(4);
+    _eivec = .;
   } >ISR_VECTOR
+
+  .metadata : {
+    _smeta = .;   /* Mark start of metadata block */
+    KEEP(*(.metadata))
+    . = ALIGN(4);
+    _emeta = .;
+  } >METADATA = 0xFF
 
   /* Non-volatile flash filesystem */
   .storage0 (NOLOAD) : {
@@ -54,6 +63,7 @@ SECTIONS {
   /* Executable code */
   .text : {
     . = ALIGN(4);
+    _sflash1 = .;
     *(.text)
     *(.text*)
     *(.glue_7)      /* ARM to Thumb interworking */
@@ -71,6 +81,7 @@ SECTIONS {
     *(.rodata)
     *(.rodata*)
     . = ALIGN(4);
+    _eflash1 = .;
   } >FLASH1
 
   /* AAPCS table for stack unwinding, exception handling, etc. */
