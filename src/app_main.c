@@ -135,8 +135,14 @@ extern char _sflash0, _eflash0;
 #  endif
 
 static const TraitDescriptor s_app_traits[] = { // FIXME: Replace with real data
-  {1, 0, 42},
-  {2, 0, 43}
+#  if defined BOARD_STM32F429I_DISC1
+  {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_G, 14, GPIO_PIN_OUTPUT_H)},
+# elif defined BOARD_STM32F401_BLACK_PILL
+  {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_C, 13, GPIO_PIN_OUTPUT_H)},
+#  elif defined BOARD_MAPLE_MINI
+  {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_B, 1, GPIO_PIN_OUTPUT_H)},
+#  endif
+  {2, 43}
 };
 
 __attribute__(( section(".metadata"), used ))
@@ -248,7 +254,8 @@ RTCDevice g_rtc_soft_device;
 // Pins with alternate functions are initialized in usb_io_init() and uart_init()
 #  if defined BOARD_STM32F429I_DISC1
 // STM32F429I_DISC1
-DEF_PIN(g_led_heartbeat,  GPIO_PORT_G, 14,  GPIO_PIN_OUTPUT_H);
+GPIOPin g_led_heartbeat = {0};
+// FIXME: Migrate pin config to meta traits
 DEF_PIN(g_led_status,     GPIO_PORT_G, 13,  GPIO_PIN_OUTPUT_L);
 
 DEF_PIN(g_button1,        GPIO_PORT_A, 0,   GPIO_PIN_INPUT);
@@ -494,6 +501,12 @@ static void platform_init(void) {
   perf_timer_init();
 #endif
 
+  // Configure hardware from metadata traits
+  uint32_t trait;
+  if(metadata_find_trait(P_HW_GPIO_LED_HEARTBEAT, &trait)) {
+    gpio_init(&g_led_heartbeat, GPIO_META_DECODE_PORT(trait),
+      GPIO_META_DECODE_PIN(trait), GPIO_META_DECODE_MODE(trait));
+  }
 
 #ifdef USE_CONSOLE
   // Prepare command suite for all subsystems
@@ -1088,6 +1101,7 @@ int main(void) {
     sequence_add(&g_song2);
   }
 
+//  i2c_init();
 
 
 #ifdef PLATFORM_EMBEDDED
