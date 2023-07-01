@@ -55,7 +55,7 @@
 
 extern UMsgHub g_msg_hub;
 
-#ifdef BOARD_STM32F429I_DISC1
+#if defined BOARD_STM32F429I_DISC1 || defined BOARD_STM32F429N_EVAL
 // TASK: Create a debounce filter and button event manager for button1
 static Debouncer s_user_button;
 
@@ -80,7 +80,7 @@ static void debounce_task_cb(TimerHandle_t timer) {
 
 void app_tasks_init(void) {
 
-#ifdef BOARD_STM32F429I_DISC1
+#if defined BOARD_STM32F429I_DISC1 || defined BOARD_STM32F429N_EVAL
   // Button pulled low by default
   debouncer_init(&s_user_button, DEBOUNCE_TASK_MS, DEBOUNCE_FILTER_MS, /*init_filter*/false);
 
@@ -127,6 +127,7 @@ void audio_tasks_init(void) {
 #endif // USE_AUDIO
 
 
+#if USE_AUDIO
 
 /*
 
@@ -229,6 +230,7 @@ static void buzzer_task(void *ctx) {
     }
   }
 }
+#endif // USE_AUDIO
 
 
 #if 0
@@ -255,6 +257,9 @@ static void buzzer_task(void *ctx) {
 #define NOTE_A7  MIDI_NOTE(MIDI_A, 7)
 #define NOTE_B7  MIDI_NOTE(MIDI_B, 7)
 #endif
+
+
+#if USE_AUDIO
 
 #define SONG_BPM    160
 #define MS_PER_BEAT (1000ul * 60 / SONG_BPM)
@@ -336,8 +341,6 @@ static SequenceEventPair s_seq_data_twinkle[] = {
 Sequence g_seq_twinkle;
 
 
-
-
 QueueHandle_t g_buzzer_cmd_q = 0;
 
 void buzzer_task_init(void) {
@@ -374,4 +377,4 @@ void buzzer_task_init(void) {
 
 }
 
-
+#endif // USE_AUDIO

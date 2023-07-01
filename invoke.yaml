@@ -37,6 +37,13 @@ boards: # Referenced by proj.board
     options:  # Mandatory options
       - USE_NEWLIB_NANO
 
+  stm32f429n_eval:
+    platform:       stm32f4
+    linker_script:  scripts/stm32/STM32F429ZNIx_FLASH.ld
+    toolchain:      arm
+    options:  # Mandatory options
+      - USE_NEWLIB_NANO
+
   stm32f401_black_pill:
     platform:       stm32f4
     linker_script:  scripts/stm32/STM32F401CCUx_FLASH.ld
@@ -80,5 +87,8 @@ probes:   # Referenced by user.fixtures.[user.fixture].probe
     probe_cfg:  fixme
     board_cfg:  /usr/local/share/openocd/scripts/board/stm32f429disc1.cfg 
 
+  stlink_eval_openocd: # ST-Link probe. Programming via OpenOCD
+    probe_cfg:  fixme
+    board_cfg:  /usr/local/share/openocd/scripts/board/stm32429i_eval.cfg
 
 

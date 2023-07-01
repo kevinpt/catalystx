@@ -200,6 +200,8 @@ def program(c, probe=None, target=None):
     prog_stlink(c, target)
   elif probe == 'stlink_openocd':
     prog_stlink_openocd(c, target)
+  elif probe == 'stlink_eval_openocd':
+    prog_stlink_openocd(c, target)
   else:
     raise Exit(f'ERROR: Unsupported probe "{probe}"')
 

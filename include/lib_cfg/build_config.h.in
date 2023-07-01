@@ -19,6 +19,9 @@
 #cmakedefine PLATFORM_STM32F1
 #cmakedefine PLATFORM_STM32F4
 
+#cmakedefine DEVICE_STM32F401
+#cmakedefine DEVICE_STM32F429
+
 // Build option settings
 #cmakedefine01 USE_TINYUSB
 #cmakedefine01 USE_NEWLIB_NANO
@@ -29,6 +32,7 @@
 // Target board settings derived from CMake BUILD_BOARD variable
 #cmakedefine BOARD_MAPLE_MINI
 #cmakedefine BOARD_STM32F429I_DISC1
+#cmakedefine BOARD_STM32F429N_EVAL
 #cmakedefine BOARD_STM32F401_BLACK_PILL
 #cmakedefine BOARD_UNKNOWN
 

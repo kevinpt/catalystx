@@ -333,6 +333,7 @@ void TIM3_IRQHandler(void) {
 }
 
 
+#if USE_AUDIO
 void EXTI15_10_IRQHandler(void);
 void EXTI15_10_IRQHandler(void) {
   BaseType_t high_prio_task;
@@ -374,4 +375,25 @@ void TIM4_IRQHandler(void) {
     portYIELD_FROM_ISR(high_prio_task);
   }
 }
+#endif // USE_AUDIO
 
+
+#if 0
+// NOTE: IRQ attribute needed to force 8-byte alignment of SP when handling 64-bit objects
+//       on ARM architectures before ARMv7 (See IHI0046B_ABI_Advisory_1.pdf)
+#define INTERRUPT  __attribute__((interrupt("IRQ")))
+
+void I2C1_EV_IRQHandler(void);
+
+//__attribute__((interrupt("IRQ")))
+void I2C1_EV_IRQHandler(void) {
+  i2c_event_isr(&g_i2c1);
+}
+
+void I2C1_ER_IRQHandler(void);
+
+//__attribute__((interrupt("IRQ")))
+void I2C1_ER_IRQHandler(void) {
+  i2c_error_isr(&g_i2c1);
+}
+#endif

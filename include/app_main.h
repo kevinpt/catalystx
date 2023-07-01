@@ -61,7 +61,7 @@
 #  define LOG_SECTOR_SIZE 128
 
 #else // Log to flash storage
-#  if defined BOARD_STM32F429I_DISC1
+#  if defined BOARD_STM32F429I_DISC1 || defined BOARD_STM32F429N_EVAL
     // STORAGE0 in STM32 sectors 1-3
 #    define LOG_NUM_SECTORS 3
 #    define LOG_SECTOR_SIZE (16 * 1024)
@@ -83,7 +83,11 @@
 
 #define CONSOLE_UART_ID         1 // Using USART1
 #define CONSOLE_UART_PORT       GPIO_PORT_A
-#define CONSOLE_UART_BAUD       230400
+#ifdef BOARD_STM32F429N_EVAL
+#  define CONSOLE_UART_BAUD       115200
+#else
+#  define CONSOLE_UART_BAUD       230400
+#endif
 
 
 #define CONSOLE_USB_ID          0

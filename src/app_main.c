@@ -24,7 +24,7 @@
 #    include "stm32f4xx_hal.h"
 #    include "stm32f4xx_ll_rcc.h"
 #    include "stm32f4xx_ll_gpio.h"
-#    ifdef BOARD_STM32F429I_DISC1
+#    if defined BOARD_STM32F429I_DISC1 || defined BOARD_STM32F429N_EVAL
 #      include "stm32f4xx_ll_rng.h"
 #    endif
 #    include "stm32f4xx_ll_tim.h"
@@ -137,6 +137,11 @@ extern char _sflash0, _eflash0;
 static const TraitDescriptor s_app_traits[] = { // FIXME: Replace with real data
 #  if defined BOARD_STM32F429I_DISC1
   {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_G, 14, GPIO_PIN_OUTPUT_H)},
+  {P_HW_GPIO_LED_STATUS,    GPIO_META_ENCODE(GPIO_PORT_G, 13, GPIO_PIN_OUTPUT_H)},
+#  elif defined BOARD_STM32F429N_EVAL
+  {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_G, 6, GPIO_PIN_OUTPUT_H)},
+  {P_HW_GPIO_LED_STATUS,    GPIO_META_ENCODE(GPIO_PORT_G, 7, GPIO_PIN_OUTPUT_H)},
+  {P_HW_GPIO_BUTTON_SELECT, GPIO_META_ENCODE(GPIO_PORT_C, 13, GPIO_PIN_INPUT)},
 # elif defined BOARD_STM32F401_BLACK_PILL
   {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_C, 13, GPIO_PIN_OUTPUT_H)},
 #  elif defined BOARD_MAPLE_MINI
@@ -177,6 +182,7 @@ LogDB       g_log_db;
 ErrorLog    g_error_log;
 mpPoolSet   g_pool_set;
 UMsgTarget  g_tgt_event_buttons;
+
 #if USE_AUDIO
 UMsgTarget  g_tgt_audio_ctl;
 SynthState  g_audio_synth;
@@ -197,7 +203,6 @@ SampleDevice *g_dev_audio = (SampleDevice *)&s_dev_audio;
 #  endif
 _Alignas(int32_t)
 int16_t g_audio_buf[AUDIO_DMA_BUF_SAMPLES * AUDIO_DMA_BUF_CHANNELS];
-#endif
 
 
 static SequenceEvent s_song_notes[] = {
@@ -221,6 +226,9 @@ static SequenceEventPair s_song2[] = {
 };
 
 Sequence g_song2;
+
+#endif // USE_AUDIO
+
 
 #if LOG_TO_RAM
 // Small in-memory database for testing
@@ -255,8 +263,9 @@ RTCDevice g_rtc_soft_device;
 #  if defined BOARD_STM32F429I_DISC1
 // STM32F429I_DISC1
 GPIOPin g_led_heartbeat = {0};
+GPIOPin g_led_status = {0};
 // FIXME: Migrate pin config to meta traits
-DEF_PIN(g_led_status,     GPIO_PORT_G, 13,  GPIO_PIN_OUTPUT_L);
+//DEF_PIN(g_led_status,     GPIO_PORT_G, 13,  GPIO_PIN_OUTPUT_L);
 
 DEF_PIN(g_button1,        GPIO_PORT_A, 0,   GPIO_PIN_INPUT);
 #    if USE_TINYUSB
@@ -267,6 +276,11 @@ DEF_PIN(g_usb_oc,         GPIO_PORT_C, 5,   GPIO_PIN_INPUT);
 #  if USE_AUDIO
 //DEF_PIN(g_dac_pin,        GPIO_PORT_A, 4,  GPIO_PIN_OUTPUT_L);
 #  endif
+
+#  elif defined BOARD_STM32F429N_EVAL
+GPIOPin g_led_heartbeat = {0};
+GPIOPin g_led_status = {0};
+GPIOPin g_button1 = {0}; // FIXME: rename
 
 #  elif defined BOARD_STM32F401_BLACK_PILL
 DEF_PIN(g_led_heartbeat,  GPIO_PORT_C, 13,  GPIO_PIN_OUTPUT_H);
@@ -357,7 +371,7 @@ void set_led(uint8_t led_id, const short state) {
       break;
 
     case LED_STATUS:
-#  if defined BOARD_STM32F429I_DISC1
+#  if defined BOARD_STM32F429I_DISC1 || defined BOARD_STM32F429N_EVAL
       SET_LED_STATE(g_led_status, state);
 #  endif
       break;
@@ -375,7 +389,7 @@ bool get_led(uint8_t led_id) {
       break;
 
     case LED_STATUS:
-#  if defined BOARD_STM32F429I_DISC1
+#  if defined BOARD_STM32F429I_DISC1 || defined BOARD_STM32F429N_EVAL
       return gpio_value(&g_led_status);
 #  endif
       break;
@@ -467,7 +481,7 @@ uint32_t flash_sector_index(uint8_t *addr) {
     }
 
   }
-#  if defined BOARD_STM32F429I_DISC1
+#  if defined BOARD_STM32F429I_DISC1 || defined BOARD_STM32F429N_EVAL
    else {  // Bank 2
     flash_offset -= 0x100000ul;
     if(flash_offset < 0x10000ul) {  // 16K (12-15)
@@ -505,6 +519,16 @@ static void platform_init(void) {
   uint32_t trait;
   if(metadata_find_trait(P_HW_GPIO_LED_HEARTBEAT, &trait)) {
     gpio_init(&g_led_heartbeat, GPIO_META_DECODE_PORT(trait),
+      GPIO_META_DECODE_PIN(trait), GPIO_META_DECODE_MODE(trait));
+  }
+
+  if(metadata_find_trait(P_HW_GPIO_LED_STATUS, &trait)) {
+    gpio_init(&g_led_status, GPIO_META_DECODE_PORT(trait),
+      GPIO_META_DECODE_PIN(trait), GPIO_META_DECODE_MODE(trait));
+  }
+
+  if(metadata_find_trait(P_HW_GPIO_BUTTON_SELECT, &trait)) {
+    gpio_init(&g_button1, GPIO_META_DECODE_PORT(trait),
       GPIO_META_DECODE_PIN(trait), GPIO_META_DECODE_MODE(trait));
   }
 
@@ -618,14 +642,14 @@ static void platform_init(void) {
 
   // Configure RTC
 #ifdef PLATFORM_EMBEDDED
-#ifdef BOARD_STM32F401_BLACK_PILL
-#  define RTC_CLK_SOURCE  RTC_CLK_EXTERN_XTAL
-#else
-#  define RTC_CLK_SOURCE  RTC_CLK_INTERN
-#endif
+#  if defined BOARD_STM32F401_BLACK_PILL || defined BOARD_STM32F429N_EVAL
+#    define RTC_CLK_SOURCE  RTC_CLK_EXTERN_XTAL
+#  else
+#    define RTC_CLK_SOURCE  RTC_CLK_INTERN
+#  endif
 
   // External RTC clock requires GPIO config
-#if RTC_CLK_SOURCE == RTC_CLK_EXTERN_XTAL || RTC_CLK_SOURCE == RTC_CLK_EXTERN_OSC
+#  if RTC_CLK_SOURCE == RTC_CLK_EXTERN_XTAL || RTC_CLK_SOURCE == RTC_CLK_EXTERN_OSC
   gpio_enable_port(GPIO_PORT_C);
 
   // OSC32_IN (PC14)
@@ -639,12 +663,12 @@ static void platform_init(void) {
   };
   LL_GPIO_Init(GPIOC, &gpio_cfg);
 
-#  if RTC_CLK_SOURCE == RTC_CLK_EXTERN_XTAL
+#    if RTC_CLK_SOURCE == RTC_CLK_EXTERN_XTAL
   // OSC32_OUT (PC15)
   gpio_cfg.Pin = LL_GPIO_PIN_15;
   LL_GPIO_Init(GPIOC, &gpio_cfg);
-#  endif
-#endif
+#    endif
+#  endif // RTC_CLK_SOURCE
 #endif // PLATFORM_EMBEDDED
 
 #ifdef PLATFORM_EMBEDDED
@@ -688,7 +712,7 @@ static void platform_init(void) {
 static void event_button_handler(UMsgTarget *tgt, UMsg *msg) {
   switch(msg->id) {
   case P_EVENT_BUTTON_USER_RELEASE:
-#ifdef BOARD_STM32F429I_DISC1
+#if defined BOARD_STM32F429I_DISC1 || defined BOARD_STM32F429N_EVAL
     gpio_toggle(&g_led_status);
 #endif
     break;
@@ -698,7 +722,7 @@ static void event_button_handler(UMsgTarget *tgt, UMsg *msg) {
 }
 
 
-#ifdef BOARD_STM32F429I_DISC1
+#if defined BOARD_STM32F429I_DISC1 || defined BOARD_STM32F429N_EVAL
 // Get random value from hardware RNG
 uint32_t random_from_system(void) {
   __HAL_RCC_RNG_CLK_ENABLE();
@@ -930,9 +954,11 @@ static void portable_init(void) {
 }
 
 
+#if USE_AUDIO
 static void end_sequence(Sequence *seq) {
   printf("Sequence ended\n");
 }
+#endif
 
 int main(void) {
 #ifdef PLATFORM_EMBEDDED
@@ -955,9 +981,9 @@ int main(void) {
 #if USE_AUDIO
 #  if defined PLATFORM_EMBEDDED
 #    define AUDIO_QUEUE_SIZE  260
-#else
+#  else
 #    define AUDIO_QUEUE_SIZE  2048
-#endif
+#  endif
   synth_init(&g_audio_synth, AUDIO_SAMPLE_RATE, AUDIO_QUEUE_SIZE);
   //synth_set_marker(&g_audio_synth, /*enable*/ true);
 
@@ -1090,7 +1116,7 @@ int main(void) {
 #  ifdef PLATFORM_EMBEDDED
   buzzer_hw_init();
 #  endif
-#endif // USE_AUDIO
+
 
 
   sequence_init(&g_song_seq, s_song_notes, COUNT_OF(s_song_notes), 6, end_sequence, 0);
@@ -1100,6 +1126,8 @@ int main(void) {
 //    sequence_dump(&g_song2);
     sequence_add(&g_song2);
   }
+
+#endif // USE_AUDIO
 
 //  i2c_init();
 

@@ -135,6 +135,105 @@ void system_clock_init(void) {
     fatal_error();
 }
 
+
+#elif defined BOARD_STM32F429N_EVAL
+void system_clock_init(void) {
+  RCC_OscInitTypeDef osc_init;
+  RCC_ClkInitTypeDef clk_init;
+
+  __HAL_RCC_PWR_CLK_ENABLE();
+
+  // Enable voltage scaling at lower clock rates
+  // VDD 2.7V - 3.6V
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+/*
+        Clock diagram in RM0090 Figure 16  p152
+                                                   : :        .--------.
+  HSE              .---------------------.         | |------->| AHB PS |---> HCLK  180MHz max
+  25MHz  .----.   |   .----.     .----.  | PLLCLK  | / SYSCLK '--------'
+--|[]|-->| /M |---|-->| *N |--+->| /P |--|-------->|/            |   .---------.
+   X3    '----'   |   '----'  |  :----:  |                       +-->| APB1 PS |--> 45MHz max
+                  |           '->| /Q |--|---> PLL48CK (48MHz)   |   :---------:
+                  | PLL          '----'  |                       '-->| APB2 PS |--> 90MHz max
+                  '----------------------'                           '---------'
+*/
+
+
+  // Use PLL driven by HSE
+  osc_init.OscillatorType = RCC_OSCILLATORTYPE_HSE; // 25MHz Xtal
+  osc_init.HSEState       = RCC_HSE_ON;
+  osc_init.PLL.PLLState   = RCC_PLL_ON;
+  osc_init.PLL.PLLSource  = RCC_PLLSOURCE_HSE;
+
+#ifndef USE_USB // 180MHz Sysclk
+  osc_init.PLL.PLLM       = 25;   // Div factor (2 - 63)
+  osc_init.PLL.PLLN       = 360; // Mul factor (50 - 432)
+  osc_init.PLL.PLLP       = RCC_PLLP_DIV2; // Sysclk div factor (2,4,6,8)
+  osc_init.PLL.PLLQ       = 8;   // Div factor (2 - 15) for OTG FS, SDIO, and RNG (48MHz for USB)
+  // 8MHz * 360 / 8 / 2 --> 180MHz  Sysclk
+  // 8MHz * 360 / 8 / 8 --> 45MHz
+
+  // AHB = HCLK = Sysclk/1 = 180MHz  (180MHz max)
+  // APB1 = AHB/4 = 45MHz (45MHz max)
+  // APB2 = AHB/2 = 90MHz (90MHz max)
+  // SysTick = AHB = 180MHz
+
+#else // PLL48CK must be 48MHz so Sysclk limited to 168MHz
+  osc_init.PLL.PLLM       = 8;   // Div factor (2 - 63)
+  osc_init.PLL.PLLN       = 336; // Mul factor (50 - 432)
+  osc_init.PLL.PLLP       = RCC_PLLP_DIV2; // Sysclk div factor (2,4,6,8)
+  osc_init.PLL.PLLQ       = 7;   // Div factor (2 - 15) for OTG FS, SDIO, and RNG (48MHz for USB)
+  // 8MHz * 336 / 8 / 2 --> 168MHz  Sysclk
+  // 8MHz * 336 / 8 / 7 --> 48MHz
+
+  // AHB = HCLK = Sysclk/1 = 168MHz  (180MHz max)
+  // APB1 = AHB/4 = 42MHz (45MHz max)
+  // APB2 = AHB/2 = 84MHz (90MHz max)
+  // SysTick = AHB = 168MHz
+#endif
+
+  if(HAL_RCC_OscConfig(&osc_init) != HAL_OK)
+    fatal_error();
+
+  // Set internal voltage reg. to allow higher clock rates (required to achieve 180MHz)
+  // Stop and Standby modes no longer available
+  HAL_PWREx_EnableOverDrive();
+
+  // Use PLL as Sysclk and set division ratios for derived clocks
+  clk_init.ClockType      = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK |
+                             RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2);
+  clk_init.SYSCLKSource   = RCC_SYSCLKSOURCE_PLLCLK;
+  clk_init.AHBCLKDivider  = RCC_SYSCLK_DIV1;  // HCLK == Sysclk
+  clk_init.APB1CLKDivider = RCC_HCLK_DIV4;
+  clk_init.APB2CLKDivider = RCC_HCLK_DIV2;
+
+  // NOTE: Latency selected from Table 11 in RM0090
+  if(HAL_RCC_ClockConfig(&clk_init, FLASH_LATENCY_5) != HAL_OK)
+    fatal_error();
+
+#if 0
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+
+  // MCO1 (PA8)
+  LL_GPIO_InitTypeDef gpio_cfg = {
+    .Pin        = LL_GPIO_PIN_8,
+    .Mode       = LL_GPIO_MODE_ALTERNATE,
+    .Speed      = LL_GPIO_SPEED_FREQ_VERY_HIGH,
+    .OutputType = LL_GPIO_OUTPUT_PUSHPULL,
+    .Pull       = LL_GPIO_PULL_NO,
+    .Alternate  = LL_GPIO_AF_0  // Datasheet Table 12 p75
+  };
+  LL_GPIO_Init(GPIOA, &gpio_cfg);
+
+  LL_RCC_ConfigMCO(LL_RCC_MCO1SOURCE_PLLCLK, LL_RCC_MCO1_DIV_5);
+  //LL_RCC_ConfigMCO(LL_RCC_MCO1SOURCE_HSI, LL_RCC_MCO1_DIV_2);
+
+#endif
+
+}
+
+
 #elif defined BOARD_STM32F401_BLACK_PILL
 void system_clock_init(void) {
   RCC_OscInitTypeDef osc_init;

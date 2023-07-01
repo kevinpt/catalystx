@@ -1,4 +1,4 @@
-/* GNU ld linker script for STM32F429ZITx with 2MB flash */
+/* GNU ld linker script for STM32F429NIHx with 2MB flash */
 
 
 /* Code entry point (See startup_stm32f429xx.s)*/
@@ -23,7 +23,7 @@ MEMORY {
                   LENGTH = 2048K - LENGTH(ISR_VECTOR) - LENGTH(METADATA) - LENGTH(FLASH0) - LENGTH(STORAGE0)
   RAM     (xrw) : ORIGIN = 0x20000000, LENGTH = 192K
   CCMRAM  (rw)  : ORIGIN = 0x10000000, LENGTH = 64K
-  SDRAM   (rw)  : ORIGIN = 0xD0000000, LENGTH = 8M
+  SDRAM   (rw)  : ORIGIN = 0xD0000000, LENGTH = 16M /* 128 Mbit MT48LC4M32B2B5-7 */
 }
 
 /* Stack pointer initialized pointing one byte past end of RAM */
