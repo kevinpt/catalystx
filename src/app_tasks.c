@@ -56,11 +56,11 @@
 extern UMsgHub g_msg_hub;
 
 #if defined BOARD_STM32F429I_DISC1 || defined BOARD_STM32F429N_EVAL
-// TASK: Create a debounce filter and button event manager for button1
+// TASK: Create a debounce filter and button event manager
 static Debouncer s_user_button;
 
 static void debounce_task_cb(TimerHandle_t timer) {
-  debouncer_filter_sample(&s_user_button, gpio_value(&g_button1));
+  debouncer_filter_sample(&s_user_button, gpio_value(&g_button_select));
 
   if(debouncer_rising_edge(&s_user_button)) {
     UMsg msg = { .id = P_EVENT_BUTTON_USER_PRESS,

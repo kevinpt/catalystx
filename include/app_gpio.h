@@ -5,7 +5,7 @@
 
 extern GPIOPin g_led_heartbeat;
 extern GPIOPin g_led_status;
-extern GPIOPin g_button1;
+extern GPIOPin g_button_select;
 
 extern GPIOPin g_i2s_sd_mode;
 extern GPIOPin g_i2s_gain;

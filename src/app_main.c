@@ -134,20 +134,27 @@ extern char _sivec, _eivec, _sflash1, _eflash1;
 extern char _sflash0, _eflash0;
 #  endif
 
-static const TraitDescriptor s_app_traits[] = { // FIXME: Replace with real data
+
+GPIOPin g_led_heartbeat = {0};
+GPIOPin g_led_status = {0};
+GPIOPin g_button_select = {0};
+
+
+static const TraitDescriptor s_app_traits[] = {
 #  if defined BOARD_STM32F429I_DISC1
-  {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_G, 14, GPIO_PIN_OUTPUT_H)},
-  {P_HW_GPIO_LED_STATUS,    GPIO_META_ENCODE(GPIO_PORT_G, 13, GPIO_PIN_OUTPUT_H)},
+  {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_G, 14, GPIO_PIN_OUTPUT_H), &g_led_heartbeat},
+  {P_HW_GPIO_LED_STATUS,    GPIO_META_ENCODE(GPIO_PORT_G, 13, GPIO_PIN_OUTPUT_H), &g_led_status},
+  {P_HW_GPIO_BUTTON_SELECT, GPIO_META_ENCODE(GPIO_PORT_A, 0,  GPIO_PIN_INPUT), &g_button_select},
 #  elif defined BOARD_STM32F429N_EVAL
-  {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_G, 6, GPIO_PIN_OUTPUT_H)},
-  {P_HW_GPIO_LED_STATUS,    GPIO_META_ENCODE(GPIO_PORT_G, 7, GPIO_PIN_OUTPUT_H)},
-  {P_HW_GPIO_BUTTON_SELECT, GPIO_META_ENCODE(GPIO_PORT_C, 13, GPIO_PIN_INPUT)},
+  {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_G, 6,  GPIO_PIN_OUTPUT_H), &g_led_heartbeat},
+  {P_HW_GPIO_LED_STATUS,    GPIO_META_ENCODE(GPIO_PORT_G, 7,  GPIO_PIN_OUTPUT_H), &g_led_status},
+  {P_HW_GPIO_BUTTON_SELECT, GPIO_META_ENCODE(GPIO_PORT_C, 13, GPIO_PIN_INPUT), &g_button_select},
 # elif defined BOARD_STM32F401_BLACK_PILL
-  {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_C, 13, GPIO_PIN_OUTPUT_H)},
+  {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_C, 13, GPIO_PIN_OUTPUT_H), &g_led_heartbeat},
 #  elif defined BOARD_MAPLE_MINI
-  {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_B, 1, GPIO_PIN_OUTPUT_H)},
+  {P_HW_GPIO_LED_HEARTBEAT, GPIO_META_ENCODE(GPIO_PORT_B, 1, GPIO_PIN_OUTPUT_H), &g_led_heartbeat},
+  {P_HW_GPIO_BUTTON_SELECT, GPIO_META_ENCODE(GPIO_PORT_B, 8, GPIO_PIN_INPUT), &g_button_select},
 #  endif
-  {2, 43}
 };
 
 __attribute__(( section(".metadata"), used ))
@@ -157,7 +164,7 @@ const ObjectMetadata g_metadata = {
   .meta_version = OBJ_METADATA_V1,
   .obj_kind     = OBJ_KIND_APP,
   .active_image = 1,
-#  ifndef NDEBUG  // CMake will def NDEBUG in all debug build types
+#  ifndef NDEBUG  // CMake will def NDEBUG in all non-debug build types
   .debug_build  = 1,
 #  endif
 
@@ -262,12 +269,6 @@ RTCDevice g_rtc_soft_device;
 // Pins with alternate functions are initialized in usb_io_init() and uart_init()
 #  if defined BOARD_STM32F429I_DISC1
 // STM32F429I_DISC1
-GPIOPin g_led_heartbeat = {0};
-GPIOPin g_led_status = {0};
-// FIXME: Migrate pin config to meta traits
-//DEF_PIN(g_led_status,     GPIO_PORT_G, 13,  GPIO_PIN_OUTPUT_L);
-
-DEF_PIN(g_button1,        GPIO_PORT_A, 0,   GPIO_PIN_INPUT);
 #    if USE_TINYUSB
 DEF_PIN(g_usb_pso,        GPIO_PORT_C, 4,   GPIO_PIN_OUTPUT_H);
 DEF_PIN(g_usb_oc,         GPIO_PORT_C, 5,   GPIO_PIN_INPUT);
@@ -277,20 +278,10 @@ DEF_PIN(g_usb_oc,         GPIO_PORT_C, 5,   GPIO_PIN_INPUT);
 //DEF_PIN(g_dac_pin,        GPIO_PORT_A, 4,  GPIO_PIN_OUTPUT_L);
 #  endif
 
-#  elif defined BOARD_STM32F429N_EVAL
-GPIOPin g_led_heartbeat = {0};
-GPIOPin g_led_status = {0};
-GPIOPin g_button1 = {0}; // FIXME: rename
-
 #  elif defined BOARD_STM32F401_BLACK_PILL
-DEF_PIN(g_led_heartbeat,  GPIO_PORT_C, 13,  GPIO_PIN_OUTPUT_H);
-//DEF_PIN(g_debug_seq,      GPIO_PORT_B, 14,  GPIO_PIN_OUTPUT_L);
 
 #  elif defined BOARD_MAPLE_MINI
 // Maple Mini STM32F103CBT
-DEF_PIN(g_led_heartbeat,  GPIO_PORT_B, 1,  GPIO_PIN_OUTPUT_H);
-
-DEF_PIN(g_button1,        GPIO_PORT_B, 8,   GPIO_PIN_INPUT);
 #  endif
 #endif
 
@@ -300,7 +291,7 @@ static const PropDefaultDef s_prop_defaults[] = {
   P_UINT(P_APP_INFO_BUILD_VERSION,    APP_VERSION_INT, P_PROTECT | P_PERSIST),
   P_UINT(P_SYS_STORAGE_INFO_COUNT,    0, P_PROTECT | P_PERSIST),  // Flash write counter
   P_UINT((P1_APP | P2_INFO | P3_INFO | P4_VALUE), 0, P_PERSIST), // Dummy persistable value for testing
-#if USE_AUDIO
+#if USE_AUDIO // FIXME: Some are obsolete
   P_UINT(P_APP_AUDIO_INFO_VALUE, 0, 0),
   P_UINT(P_APP_AUDIO_INST0_FREQ,  440, 0),
   P_UINT(P_APP_AUDIO_INST0_WAVE,   1, 0),
@@ -499,6 +490,18 @@ uint32_t flash_sector_index(uint8_t *addr) {
 #endif
 
 
+static void visit_gpio_trait(const TraitDescriptor *trait) {
+  uint8_t port = GPIO_META_DECODE_PORT(trait->value);
+  uint8_t pin  = GPIO_META_DECODE_PIN(trait->value);
+  unsigned short mode = GPIO_META_DECODE_MODE(trait->value);
+
+  if(trait->object)
+    gpio_init(trait->object, port, pin, mode);
+  else
+    gpio_config(port, pin, mode);
+}
+
+
 static void platform_init(void) {
 #ifdef PLATFORM_STM32
   HAL_Init();
@@ -516,21 +519,8 @@ static void platform_init(void) {
 #endif
 
   // Configure hardware from metadata traits
-  uint32_t trait;
-  if(metadata_find_trait(P_HW_GPIO_LED_HEARTBEAT, &trait)) {
-    gpio_init(&g_led_heartbeat, GPIO_META_DECODE_PORT(trait),
-      GPIO_META_DECODE_PIN(trait), GPIO_META_DECODE_MODE(trait));
-  }
+  metadata_visit_traits(visit_gpio_trait, (P1_HW | P2_GPIO | P3_MSK | P4_MSK));
 
-  if(metadata_find_trait(P_HW_GPIO_LED_STATUS, &trait)) {
-    gpio_init(&g_led_status, GPIO_META_DECODE_PORT(trait),
-      GPIO_META_DECODE_PIN(trait), GPIO_META_DECODE_MODE(trait));
-  }
-
-  if(metadata_find_trait(P_HW_GPIO_BUTTON_SELECT, &trait)) {
-    gpio_init(&g_button1, GPIO_META_DECODE_PORT(trait),
-      GPIO_META_DECODE_PIN(trait), GPIO_META_DECODE_MODE(trait));
-  }
 
 #ifdef USE_CONSOLE
   // Prepare command suite for all subsystems
