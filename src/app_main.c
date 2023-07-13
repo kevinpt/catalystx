@@ -1119,7 +1119,9 @@ int main(void) {
 
 #endif // USE_AUDIO
 
-//  i2c_init();
+#if 0
+  i2c_init();
+#endif
 
 
 #ifdef PLATFORM_EMBEDDED

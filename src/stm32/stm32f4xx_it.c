@@ -148,7 +148,7 @@ void SysTick_Handler(void) {
   if(g_enable_rtos_sys_tick)
     xPortSysTickHandler();
   HAL_IncTick();
-#ifdef USE_LVGL
+#if USE_LVGL
   lv_tick_inc(1);
 #endif
 }
@@ -378,7 +378,7 @@ void TIM4_IRQHandler(void) {
 #endif // USE_AUDIO
 
 
-#if 0
+#if USE_I2C
 // NOTE: IRQ attribute needed to force 8-byte alignment of SP when handling 64-bit objects
 //       on ARM architectures before ARMv7 (See IHI0046B_ABI_Advisory_1.pdf)
 #define INTERRUPT  __attribute__((interrupt("IRQ")))

@@ -28,6 +28,8 @@
 #cmakedefine01 USE_MINIMAL_TASKS
 #cmakedefine01 USE_FILESYSTEM
 #cmakedefine01 USE_AUDIO
+#cmakedefine01 USE_I2C
+#cmakedefine01 USE_LVGL
 
 // Target board settings derived from CMake BUILD_BOARD variable
 #cmakedefine BOARD_MAPLE_MINI
