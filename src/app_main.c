@@ -28,6 +28,11 @@
 #      include "stm32f4xx_ll_rng.h"
 #    endif
 #    include "stm32f4xx_ll_tim.h"
+#    if USE_LVGL
+#      include "stm32f429i_discovery.h"
+#      include "stm32f429i_discovery_lcd.h"
+#      include "stm32f429i_discovery_ts.h"
+#    endif
 #  endif
 #  include "cstone/cycle_counter_cortex.h"
 #endif
@@ -125,6 +130,13 @@
 #  endif
 #endif
 
+#if USE_LVGL
+#  include "lvgl/lvgl.h"
+#  include "ui_panel.h"
+#  include "ui_units.h"
+#  include "app_ui.h"
+#  include "disco_ui.hpp"
+#endif
 
 
 #if defined PLATFORM_EMBEDDED
@@ -189,6 +201,9 @@ LogDB       g_log_db;
 ErrorLog    g_error_log;
 mpPoolSet   g_pool_set;
 UMsgTarget  g_tgt_event_buttons;
+#if USE_LVGL
+UMsgTarget  g_tgt_gui_props;
+#endif
 
 #if USE_AUDIO
 UMsgTarget  g_tgt_audio_ctl;
@@ -235,6 +250,12 @@ static SequenceEventPair s_song2[] = {
 Sequence g_song2;
 
 #endif // USE_AUDIO
+
+
+#if USE_LVGL
+extern UIReactWidgets    g_react_widgets;
+extern UIWidgetRegistry  g_widget_reg;
+#endif
 
 
 #if LOG_TO_RAM
@@ -296,6 +317,21 @@ static const PropDefaultDef s_prop_defaults[] = {
   P_UINT(P_APP_AUDIO_INST0_FREQ,  440, 0),
   P_UINT(P_APP_AUDIO_INST0_WAVE,   1, 0),
   P_UINT(P_APP_AUDIO_INST0_CURVE,  0, 0),
+#endif
+#if USE_LVGL
+  P_UINT(P_APP_GUI_INFO__DARK,            0, P_PERSIST),
+  P_UINT(P_APP_GUI_UNITS__SPEED,         UNIT_MPH, P_PERSIST),
+  P_UINT(P_APP_GUI_UNITS__TEMPERATURE,   UNIT_CELSIUS, P_PERSIST),
+  P_UINT(P_APP_GUI_MENU__MODE,            0, 0),
+  P_UINT(P_SENSOR_ECU__SPEED__VALUE,      0, 0), // 24.8 fixed point km/h
+  P_UINT(P_SENSOR_ECU__SPEED__AVERAGE,    0, 0), // 24.8 fixed point km/h
+  P_UINT(P_SENSOR_ECU__SPEED__MAX,        0, 0), // 24.8 fixed point km/h
+  P_UINT(P_SENSOR_ECU__RPM__VALUE,        0, 0),
+  P_UINT(P_SENSOR_ECU__SIDESTAND__VALUE,  0, 0),  // Bool
+  P_UINT(P_SENSOR_ECU__GEAR__VALUE,       0, 0),  // 0 - 6
+  P_UINT(P_SENSOR_ECU__VOLTAGE__VALUE,      0, 0),  // 24.8 fixed point
+  P_INT(P_SENSOR_ECU__COOLANT_TEMP__VALUE,  0, 0),  // Celsius
+  P_UINT(P_SENSOR_ECU__FUEL__VALUE,         0, 0),  // 0 - 100 %
 #endif
   P_END_DEFAULTS
 };
@@ -695,6 +731,16 @@ static void platform_init(void) {
 #endif
 
   rtc_set_sys_device(&s_rtc_device);
+  
+#if USE_LVGL
+  // Setup LCD
+  if(BSP_SDRAM_Init() == SDRAM_OK)
+    puts("SDRAM OK");
+
+  // Init LCD even if not using it so that the screen is blanked
+  if(BSP_LCD_Init() == LCD_OK)
+    puts("LCD OK");
+#endif // USE_LVGL
 }
 
 
@@ -706,6 +752,15 @@ static void event_button_handler(UMsgTarget *tgt, UMsg *msg) {
     gpio_toggle(&g_led_status);
 #endif
     break;
+#if USE_LVGL
+  case P_EVENT_BUTTON__UP_PRESS:
+  case P_EVENT_BUTTON__DOWN_PRESS:
+  case P_EVENT_BUTTON__LEFT_PRESS:
+  case P_EVENT_BUTTON__RIGHT_PRESS:
+  case P_EVENT_BUTTON__SEL_PRESS:
+    set_nav_button_state(msg->id);
+    break;
+#endif
   default:
     break;
   }
@@ -929,6 +984,14 @@ static void portable_init(void) {
   umsg_hub_subscribe(&g_msg_hub, &g_tgt_audio_ctl);
 #endif
 
+#if USE_LVGL
+  // Capture GUI property changes
+  umsg_tgt_callback_init(&g_tgt_gui_props, gui_prop_msg_handler);
+  umsg_tgt_add_filter(&g_tgt_gui_props, (P1_APP | P2_GUI | P3_MSK | P4_MSK));
+  umsg_tgt_add_filter(&g_tgt_gui_props, P_SENSOR_ECU_n_MSK);
+  umsg_hub_subscribe(&g_msg_hub, &g_tgt_gui_props);
+#endif
+
   // Any DB event messages sent before now were discarded because there wasn't a hub
   DPRINT("Set msg hub  %p", &g_msg_hub);
   prop_db_set_msg_hub(&g_prop_db, (UMsgTarget *)&g_msg_hub);
@@ -956,6 +1019,54 @@ int main(void) {
 #endif
   platform_init();
   portable_init();
+
+
+#if USE_LVGL
+  // FIXME: Move into platform_init() ???
+  // Configure LVGL
+#  ifdef PLATFORM_EMBEDDED
+  lcd_init();
+  lvgl_stm32_init();
+#  else
+  lvgl_sim_init();
+#  endif
+
+  // Configure widget registry
+  ui_widget_reg_init(&g_widget_reg);
+  ui_widget_reg_add_defaults(&g_widget_reg);
+
+  ui_react_widgets_init(&g_react_widgets);
+
+
+  g_panels.instr.screen  = lv_scr_act();
+  g_panels.splash.screen = lv_obj_create(NULL);
+  g_panels.ts_cal.screen = lv_obj_create(NULL);
+  ui_panel_push(&g_panels.instr); // Start panel stack on instruments
+
+  app_styles_init();
+  app_screens_init();
+
+  lv_theme_t *th = set_theme_mode(g_disp_main, /*dark_mode*/false);
+  lv_disp_set_theme(g_disp_main, th);
+
+#  if 0
+  lv_scr_load(g_panels.splash.screen);
+  // Switch from splash screen
+  lv_scr_load_anim(g_panels.instr.screen, LV_SCR_LOAD_ANIM_FADE_ON, 750, 2000, /*auto_del*/true);
+#  endif
+#endif // USE_LVGL
+
+#if USE_LVGL
+#  ifdef PLATFORM_EMBEDDED
+  ts_load_calibration(&g_touch_cal);
+#  endif
+
+  // Configure GUI with persisted props loaded from log FS
+  gui_prop_init();
+  gui_tasks_init();
+#endif
+
+
 
   // Init settings from prop DB
 //  app_apply_props();
@@ -1100,7 +1211,7 @@ int main(void) {
 
 
   audio_tasks_init();
-
+  
 
   buzzer_task_init(); // Setup task and queue first so that EXTI won't cause race condition
 #  ifdef PLATFORM_EMBEDDED

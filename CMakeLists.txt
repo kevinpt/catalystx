@@ -11,6 +11,7 @@ option(USE_NEWLIB_NANO    "Enable Newlib nano C library"    OFF)
 option(USE_MINIMAL_TASKS  "Reduce core task set to minimum" OFF)
 option(USE_FILESYSTEM     "Enable EVFS filesystem"          OFF)
 option(USE_AUDIO          "Enable Audio driver"             OFF)
+option(USE_LVGL           "Enable LVGL GUI"                 OFF)
 
 string(TIMESTAMP BUILD_TIME "%Y-%m-%dT%H:%M:%S")
 
@@ -226,6 +227,63 @@ if(PLATFORM_HOSTED AND USE_AUDIO)
 endif()
 
 
+#################### liblvgl (static) ####################
+
+file(GLOB_RECURSE LVGL_SOURCE
+  "libraries/lvgl/src/*.c"
+)
+
+if(PLATFORM_HOSTED)
+  file(GLOB_RECURSE LV_DRIVER_SOURCE
+    "libraries/lv_drivers/*.c"
+  )
+  list(APPEND LVGL_SOURCE ${LV_DRIVER_SOURCE})
+
+  find_package(SDL2 REQUIRED SDL2)
+endif()
+
+# Deactivate warnings caused by -Wextra that prevent compiling lib
+set_source_files_properties(${LVGL_SOURCE}
+  PROPERTIES
+    COMPILE_FLAGS "-Wno-undef -Wno-format -Wno-redundant-decls -Wno-unused-variable"
+)
+
+set_source_files_properties("libraries/lvgl/src/extra/libs/qrcode/qrcodegen.c"
+  PROPERTIES
+    COMPILE_FLAGS "-Wno-type-limits -Wno-sign-compare"
+)
+
+
+add_library(lvgl STATIC ${LVGL_SOURCE})
+
+# Have LVGL look for lv_conf.h in our base include dir
+target_compile_definitions(lvgl
+  PUBLIC
+    STM32F4
+    LV_CONF_INCLUDE_SIMPLE
+#    LV_DEMO_CONF_INCLUDE_SIMPLE
+)
+
+target_include_directories(lvgl
+PRIVATE
+  "include/lib_cfg"
+  "${CMAKE_BINARY_DIR}/include/lib_cfg"
+PUBLIC
+  "libraries"
+  "${CMSIS_ROOT}/Include"
+  "${CMSIS_ROOT}/Device/ST/${DEVICE_FAMILY_UC}xx/Include"
+  "${CMSIS_ROOT}/Core/Include"
+  $<$<BOOL:${PLATFORM_HOSTED}>:${SDL2_INCLUDE_DIRS}>
+)
+
+if(PLATFORM_HOSTED)
+  target_link_libraries(lvgl
+    PRIVATE
+      SDL2
+  )
+endif()
+
+
 
 ####################               ####################
 #################### BUILD TARGETS ####################
@@ -248,6 +306,28 @@ set(APP_SOURCE_COMMON
     $<$<BOOL:${USE_FILESYSTEM}>:src/log_evfs.c>
     ${CMAKE_BINARY_DIR}/template/cstone/iqueue_int16_t.h
     ${CMAKE_BINARY_DIR}/template/cstone/iqueue_int16_t.c
+)
+
+# GUI implementation when LVGL is enabled
+set(APP_SOURCE_GUI
+  src/disco_ui.cpp # FIXME
+  src/ui_panel.c
+  src/app_ui.c
+  src/ui_units.c
+  ui/images/cursor_v.c
+  ui/images/cal_target.c
+  ui/images/gear_pos.c
+  ui/images/battery_icon.c
+  ui/images/temp_icon.c
+  ui/images/checked_icon.c
+  ui/images/fuel_icon.c
+  ui/images/speedo_icon.c
+  ui/images/speedo_avg_icon.c
+  ui/images/triumph_logo.c
+  ui/images/sprint_st_40.c
+  ui/images/sprint_st_side_stand_40.c
+  ui/fonts/rubik_med_italic_24.c
+  ui/fonts/rubik_med_italic_48.c
 )
 
 set(APP_SOURCE_BUILD_HOSTED
@@ -276,6 +356,7 @@ add_stm32_executable(catalyst
   SOURCE
     ${APP_SOURCE_COMMON}
     ${APP_SOURCE_BUILD_EMBEDDED}
+    $<$<BOOL:${USE_LVGL}>:${APP_SOURCE_GUI}>
 )
 
 # Force rebuild of build_info.c with updated APP_BUILD_TIME macro
@@ -297,6 +378,7 @@ target_link_libraries(catalyst.elf
   PRIVATE
     $<$<BOOL:${USE_TINYUSB}>:tinyusb>
     $<$<BOOL:${USE_FILESYSTEM}>:evfs>
+    $<$<BOOL:${USE_LVGL}>:lvgl>
     freertos
     cstone  # Contains weak symbols, keep at end
     stm32
@@ -320,6 +402,7 @@ add_pc_executable(catalyst
   SOURCE
     ${APP_SOURCE_COMMON}
     ${APP_SOURCE_BUILD_HOSTED}
+    $<$<BOOL:${USE_LVGL}>:${APP_SOURCE_GUI}>
 )
 
 target_link_libraries(catalyst
@@ -330,6 +413,7 @@ target_link_libraries(catalyst
     heatshrink
     $<$<BOOL:${USE_FILESYSTEM}>:evfs>
     $<$<BOOL:${USE_AUDIO}>:SDL2>
+    $<$<BOOL:${USE_LVGL}>:lvgl>
 )
 
 target_include_directories(catalyst

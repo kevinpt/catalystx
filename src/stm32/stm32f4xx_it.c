@@ -45,6 +45,10 @@
 #endif
 #include "buzzer.h"
 
+#if USE_LVGL
+#  include "lvgl/lvgl.h"
+#endif
+
 #include "stm32/stm32_it.h"
 
 

@@ -8,6 +8,7 @@ proj:   # Shared project settings
     - USE_MINIMAL_TASKS
     - USE_FILESYSTEM
     - USE_AUDIO
+    - USE_LVGL
   targets:
     - catalyst
 

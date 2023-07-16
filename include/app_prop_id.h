@@ -11,15 +11,24 @@ M(P2, BEEP,      62) \
 M(P2, SEQUENCE,  63) \
 M(P2, VALVE,     70) \
 M(P2, ZONE,      71) \
+M(P2, TOUCH,     72) \
+M(P2, ECU,       73) \
 \
 M(P3, INST0,    60) \
 M(P3, USER,     61) \
 M(P3, PRESS,    62) \
 M(P3, RELEASE,  63) \
+M(P3, CAL,      64) \
+M(P3, WIDGET,   65) \
+M(P3, UNITS,    66) \
+M(P3, MENU,     67) \
+M(P3, STYLE,    68) \
 \
 M(P4, FREQ,     60) \
 M(P4, WAVE,     61) \
-M(P4, CURVE,    62)
+M(P4, CURVE,    62) \
+M(P4, AVERAGE,  63) \
+M(P4, WIDGET,   64)
 
 
 enum PropElementsApp {
@@ -58,5 +67,21 @@ enum PropElementsApp {
 #define INST_FAULT  3
 
 #define P_APP_SEQUENCE_n_ON       (P1_APP | P2_SEQUENCE | P2_ARR(0) | P4_ON)
+
+#define P_EVENT_BUTTON_n_PRESS      (P1_EVENT | P2_BUTTON | P2_ARR(0) | P4_PRESS)
+#define P_EVENT_BUTTON__USER_PRESS  (P_EVENT_BUTTON_n_PRESS | P2_ARR(0))
+#define P_EVENT_BUTTON__UP_PRESS    (P_EVENT_BUTTON_n_PRESS | P2_ARR(1))
+#define P_EVENT_BUTTON__DOWN_PRESS  (P_EVENT_BUTTON_n_PRESS | P2_ARR(2))
+#define P_EVENT_BUTTON__LEFT_PRESS  (P_EVENT_BUTTON_n_PRESS | P2_ARR(3))
+#define P_EVENT_BUTTON__RIGHT_PRESS (P_EVENT_BUTTON_n_PRESS | P2_ARR(4))
+#define P_EVENT_BUTTON__SEL_PRESS   (P_EVENT_BUTTON_n_PRESS | P2_ARR(5))
+
+#define P_HW_TOUCH_CAL_n          (P1_HW | P2_TOUCH | P3_CAL | P3_ARR(0))
+#define P_HW_TOUCH_CAL__X_SCALE   (P_HW_TOUCH_CAL_n | P3_ARR(0))
+#define P_HW_TOUCH_CAL__Y_SCALE   (P_HW_TOUCH_CAL_n | P3_ARR(1))
+#define P_HW_TOUCH_CAL__X_OFFSET  (P_HW_TOUCH_CAL_n | P3_ARR(2))
+#define P_HW_TOUCH_CAL__Y_OFFSET  (P_HW_TOUCH_CAL_n | P3_ARR(3))
+
+
 
 #endif // APP_PROP_ID_H

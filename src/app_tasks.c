@@ -44,6 +44,11 @@
 #  include "audio_synth.h"
 #endif
 
+#if USE_LVGL
+#  include "lvgl/lvgl.h"
+#endif
+
+
 #include "app_prop_id.h"
 #include "buzzer.h"
 
@@ -78,6 +83,23 @@ static void debounce_task_cb(TimerHandle_t timer) {
 #endif // BOARD_STM32F429I_DISC1
 
 
+// TASK: LVGL
+#if USE_LVGL
+static void lvgl_task_cb(void *ctx) {
+  lv_timer_handler();
+}
+
+#  ifdef PLATFORM_HOSTED
+#    define LVGL_TICK_TASK_MS  5
+// TIMER TASK: LVGL sys tick
+void lvgl_tick_task(TimerHandle_t timer) {
+  lv_tick_inc(LVGL_TICK_TASK_MS);
+}
+#  endif // PLATFORM_HOSTED
+#endif // USE_LVGL
+
+
+
 void app_tasks_init(void) {
 
 #if defined BOARD_STM32F429I_DISC1 || defined BOARD_STM32F429N_EVAL
@@ -99,6 +121,33 @@ void app_tasks_init(void) {
   cron_init();
 #endif
 }
+
+
+#if USE_LVGL
+void gui_tasks_init(void) {
+
+  static PeriodicTaskCfg lvgl_task_cfg = { // LVGL updates
+    .task   = lvgl_task_cb,
+    .ctx    = NULL,
+    .period = LVGL_TASK_MS,
+    .repeat = REPEAT_FOREVER
+  };
+
+  create_periodic_task("LVGL", STACK_BYTES(4096), TASK_PRIO_LOW, &lvgl_task_cfg);
+
+#  ifdef PLATFORM_HOSTED
+  TimerHandle_t lvgl_tick_timer = xTimerCreate(  // LVGL system tick
+    "LVGLtick",
+    LVGL_TICK_TASK_MS,
+    pdTRUE, // uxAutoReload
+    NULL,   // pvTimerID
+    lvgl_tick_task
+  );
+
+  xTimerStart(lvgl_tick_timer, 0);
+#  endif
+}
+#endif // USE_LVGL
 
 
 #if USE_AUDIO

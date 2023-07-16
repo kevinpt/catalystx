@@ -49,6 +49,9 @@
 #  include "cstone/cron_events.h"
 #endif
 
+#if USE_LVGL && defined PLATFORM_EMBEDDED
+extern int32_t cmd_tscal(uint8_t argc, char *argv[], void *eval_ctx);
+#endif
 
 static int32_t cmd_demo(uint8_t argc, char *argv[], void *eval_ctx) {
   printf("  argv[0]  %s\n", argv[0]);
@@ -603,6 +606,9 @@ const ConsoleCommandDef g_app_cmd_set[] = {
   CMD_DEF("cron",     cmd_cron,       "Schedule events"),
 #endif
   CMD_DEF("demo",     cmd_demo,  "Demo app command"),
+#if USE_LVGL && defined PLATFORM_EMBEDDED
+  CMD_DEF("tscal",    cmd_tscal,      "TS calibrate"),
+#endif
 #if USE_AUDIO
   CMD_DEF("audio",    cmd_audio,      "Sound control"),
   CMD_DEF("key",      cmd_key,        "Play key"),
