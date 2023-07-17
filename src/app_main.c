@@ -872,6 +872,28 @@ static void audio_ctl_handler(UMsgTarget *tgt, UMsg *msg) {
 #endif // USE_AUDIO
 
 
+static bool report_app_build_info(int index, char *buf, size_t buf_size) {
+  // For valid indices: Return a pair of strings in buf separated by a NUL
+
+  switch(index) {
+#if USE_LVGL
+  case 0:
+    strlcpy(buf, "LVGL", buf_size); // Item name
+    // Shift buf position to add item value
+    size_t len = strlen(buf);
+    buf = &buf[len+1];
+    buf_size -= len+1;
+    snprintf(buf, buf_size, "%d.%d.%d", LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
+    return true;
+    break;
+#endif
+  default:
+    return false;
+    break;
+  }
+}
+
+
 static void portable_init(void) {
 #ifdef PLATFORM_EMBEDDED
   // Init LEDs
@@ -1004,6 +1026,8 @@ static void portable_init(void) {
   if(con)
     shell_show_boot_prompt(&con->shell);
 #endif
+
+  g_report_app_build_info_cb = report_app_build_info;
 }
 
 

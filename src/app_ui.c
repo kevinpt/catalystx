@@ -78,15 +78,12 @@ static int32_t convert_si_value(int32_t si_value, int32_t fp_scale, uint32_t pro
 static void update_speed_value(uint32_t prop) {
   PropDBEntry value;
 
-  printf("## Update speed = P%04lX\n", prop);
-
   if(prop_get(&g_prop_db, prop, &value)) {
     lv_obj_t *obj = ui_panel_get_obj(&g_panels.instr, W_INSTR_LBL_SPEED);
     if(obj) {
       int32_t unit_val = convert_si_value(value.value, FIXED_24_8, P_APP_GUI_UNITS__SPEED);
       // Format 24.8 fixed point value
       unit_val = ufixed_to_uint(unit_val, FIXED_24_8); // Round up
-          printf("## value = %d  %ld\n", value.value, unit_val);
       lv_label_set_text_fmt(obj, "%3" PRIu32, unit_val); // Right justify 3 digits
     }
 
