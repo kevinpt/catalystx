@@ -24,6 +24,7 @@
 #    include "stm32f4xx_hal.h"
 #    include "stm32f4xx_ll_rcc.h"
 #    include "stm32f4xx_ll_gpio.h"
+#    include "stm32f4xx_ll_system.h"
 #    if defined BOARD_STM32F429I_DISC1 || defined BOARD_STM32F429N_EVAL
 #      include "stm32f4xx_ll_rng.h"
 #    endif
@@ -552,6 +553,14 @@ static void platform_init(void) {
 
   // Timer for run time stats and blocking delays
   perf_timer_init();
+
+  // FIXME: Configure caching
+#  if 0 && defined PLATFORM_STM32F4
+  LL_FLASH_EnableInstCacheReset();
+  LL_FLASH_DisableInstCacheReset();
+  LL_FLASH_EnablePrefetch();
+  LL_FLASH_EnableInstCache();
+#  endif
 #endif
 
   // Configure hardware from metadata traits
